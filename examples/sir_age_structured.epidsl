@@ -1,10 +1,11 @@
 -- An age-structured epidemic in an open population.
--- Susceptibility differs by age group, and births enter the young group.
+-- Susceptibility and reporting differ by age group, births enter the young group,
+-- and the reported cases of each group can be used to estimate each group's beta.
 
 model Epidemic {
-    compartment S = 990, I = 10, R = 0
+    compartment S = 9990, I = 10, R = 0
 
-    parameter beta = 0.5 [1/day]
+    parameter beta = 0.5 prior uniform(0.05, 1) [1/day]
     rate gamma = 0.1 [1/day]
     rate mu = 0.0005 [1/day]       -- per-capita birth and death rate
 
@@ -17,7 +18,7 @@ model Epidemic {
 }
 
 model Age {
-    compartment young = 300, old = 700
+    compartment young = 3000, old = 7000
 
     rate aging = 0.001 [1/day]
 
@@ -27,9 +28,17 @@ model Age {
 compose AgeStructured {
     models: [Epidemic, Age]
 
-    -- beta takes one value per age group: beta_young and beta_old.
+    -- One value per age group: beta_young and beta_old, each with beta's prior.
     parameter beta by Age = { young: 0.6, old: 0.3 }
+
+    -- Fraction of infections reported in each age group.
+    rate rho_young = 0.8 [1]
+    rate rho_old = 0.4 [1]
 
     -- Newborns join the young group.
     enter Age at young
+
+    -- Reported new infections per period, by age group.
+    observe cases_young = rho_young * incidence(S_young -> I_young)
+    observe cases_old = rho_old * incidence(S_old -> I_old)
 }

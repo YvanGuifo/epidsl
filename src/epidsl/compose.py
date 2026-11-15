@@ -20,7 +20,8 @@ The composition is their product, in the manner of a stochastic automata network
   given by ``enter Model at state``.
 * **Observables.** Each model's observables are kept. A state name becomes the
   marginal total, and an incidence counts every transition of the product in which
-  that model makes the move, synchronised transitions included.
+  that model makes the move, synchronised transitions included. The block may add
+  its own, written with cell names and group names, and its own constants.
 
 The result is a plain EpiModel, so every backend supports composition unchanged.
 """
@@ -104,6 +105,13 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
                     )
 
     constants, strata = _stratify(composition, parts, index, _constants(composition, parts))
+    for constant in composition.constants:
+        if constant.name in constants or constant.name in strata:
+            _fail(
+                f"the name '{constant.name}' is already used in compose {composition.name}",
+                constant,
+            )
+        constants[constant.name] = constant
     total = _common_total(composition, parts)
     semantics = _semantics(composition, parts)
 
@@ -171,10 +179,35 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
                         f"'{node.name}', which has no single value",
                         composition.models[i],
                     )
-            lifted = _lift_observable(observable.expr, i, cells, marginals)
+            states = _states_of(i, cells)
+            lifted = _lift_observable(observable.expr, states, marginals)
             observables.append(
                 Observable(observable.name, lifted, observable.line, observable.column)
             )
+
+    for observable in composition.observables:
+        name = observable.name
+        if name in declared_by or name in constants or name in marginals or name in strata:
+            _fail(f"the name '{name}' is already used in compose {composition.name}", observable)
+        declared_by[name] = composition.name
+        for node in walk(observable.expr):
+            if isinstance(node, Sym) and node.name in strata:
+                replacements = ", ".join(strata[node.name][1].values())
+                _fail(
+                    f"observable '{name}' uses the stratified constant '{node.name}'; "
+                    f"name one of {replacements}",
+                    node,
+                )
+            if isinstance(node, Incidence):
+                for endpoint in (e for pair in node.pairs for e in pair):
+                    if endpoint is not None and endpoint not in marginals:
+                        _fail(
+                            f"'{endpoint}' is not a compartment or group of compartments "
+                            f"of compose {composition.name}",
+                            node,
+                        )
+        lifted = _lift_observable(observable.expr, marginals, marginals)
+        observables.append(Observable(name, lifted, observable.line, observable.column))
 
     return EpiModel(
         name=composition.name,
@@ -274,6 +307,9 @@ def _stratify(
             _fail(f"constant '{name}' has no value for {', '.join(missing)}", declared)
 
         unit = declared.unit if declared.unit is not None else constants[name].unit
+        prior = declared.prior
+        if prior is None and declared.kind == "parameter":
+            prior = constants[name].prior
         generated = {local: f"{name}_{local}" for local in states}
         replaced: dict[str, Constant] = {}
         for existing, constant in constants.items():
@@ -288,6 +324,7 @@ def _stratify(
                     unit,
                     declared.line,
                     declared.column,
+                    prior,
                 )
         for new_name in generated.values():
             if new_name in constants:
@@ -381,36 +418,41 @@ def _lift(
     return lifted
 
 
-def _lift_observable(
-    expr: Expr, part: int, cells: list[Cell], marginals: Mapping[str, list[str]]
-) -> Expr:
-    """Rewrite an observable of model ``part`` for the product.
+def _states_of(part: int, cells: list[Cell]) -> dict[str, list[str]]:
+    """Map each state of model ``part`` to the names of the cells in that state."""
+    states: dict[str, list[str]] = {}
+    for cell in cells:
+        states.setdefault(cell[part], []).append(_name(cell))
+    return states
 
-    State names become marginal totals. An incidence from ``a`` to ``b`` counts every
-    transition whose cell goes from state ``a`` to state ``b`` in that model.
+
+def _lift_observable(
+    expr: Expr, endpoints: Mapping[str, list[str]], marginals: Mapping[str, list[str]]
+) -> Expr:
+    """Rewrite an observable for the product.
+
+    Group names become totals. An incidence from ``a`` to ``b`` counts every
+    transition from a cell of ``a`` to a cell of ``b``, ``endpoints`` giving the cells
+    that each name stands for.
     """
     match expr:
         case Incidence(pairs, line, column):
             lifted: list[tuple[str | None, str | None]] = []
             for source, target in pairs:
-                sources = (
-                    [None] if source is None else [_name(c) for c in cells if c[part] == source]
-                )
-                targets = (
-                    [None] if target is None else [_name(c) for c in cells if c[part] == target]
-                )
+                sources = [None] if source is None else endpoints[source]
+                targets = [None] if target is None else endpoints[target]
                 lifted.extend((a, b) for a in sources for b in targets)
             return Incidence(tuple(lifted), line, column)
         case Neg(operand):
-            return Neg(_lift_observable(operand, part, cells, marginals))
+            return Neg(_lift_observable(operand, endpoints, marginals))
         case BinOp(op, left, right):
             return BinOp(
                 op,
-                _lift_observable(left, part, cells, marginals),
-                _lift_observable(right, part, cells, marginals),
+                _lift_observable(left, endpoints, marginals),
+                _lift_observable(right, endpoints, marginals),
             )
         case Call(func, args, line, column):
-            lifted_args = tuple(_lift_observable(a, part, cells, marginals) for a in args)
+            lifted_args = tuple(_lift_observable(a, endpoints, marginals) for a in args)
             return Call(func, lifted_args, line, column)
         case _:
             return _rewrite(expr, None, "", marginals, {})

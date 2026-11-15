@@ -22,13 +22,14 @@ semantics: "semantics" ":" "[" NAME ("," NAME)* "]"
 
 compose: "compose" NAME "{" (_compose_statement ";"?)* "}"
 
-_compose_statement: models | sync | stratified_parameter | stratified_rate | enter
+_compose_statement: models | sync | stratified_parameter | stratified_rate | enter | observe
+    | parameter | rate
 
 models: "models" ":" "[" NAME ("," NAME)* "]"
 sync: "sync" move ("," move)+ ":" _expr
 move: NAME ARROW NAME
 
-stratified_parameter: "parameter" NAME "by" NAME "=" "{" stratum ("," stratum)* "}" [UNIT]
+stratified_parameter: "parameter" NAME "by" NAME "=" "{" stratum ("," stratum)* "}" [prior] [UNIT]
 stratified_rate: "rate" NAME "by" NAME "=" "{" stratum ("," stratum)* "}" [UNIT]
 stratum: NAME ":" signed
 

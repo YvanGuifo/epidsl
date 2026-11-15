@@ -203,6 +203,8 @@ class Stratified:
     unit: str | None = None
     line: int = _pos()
     column: int = _pos()
+    #: Prior given to each generated parameter; None inherits the original's.
+    prior: Prior | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +226,9 @@ class Composition:
     syncs: tuple[Sync, ...]
     stratified: tuple[Stratified, ...] = ()
     entries: tuple[Entry, ...] = ()
+    observables: tuple[Observable, ...] = ()
+    #: Constants declared in the block itself, added to those of the models.
+    constants: tuple[Constant, ...] = ()
     line: int = _pos()
     column: int = _pos()
 

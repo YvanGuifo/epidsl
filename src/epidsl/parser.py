@@ -52,16 +52,20 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
     def start(self, *items: EpiModel | Composition) -> tuple[EpiModel | Composition, ...]:
         return items
 
-    def compose(
-        self, name: Token, *statements: tuple[Ref, ...] | Sync | Stratified | Entry
-    ) -> Composition:
+    def compose(self, name: Token, *statements: Any) -> Composition:
         models: tuple[Ref, ...] | None = None
         syncs: list[Sync] = []
         stratified: list[Stratified] = []
         entries: list[Entry] = []
+        observables: list[Observable] = []
+        constants: list[Constant] = []
         for item in statements:
             if isinstance(item, Sync):
                 syncs.append(item)
+            elif isinstance(item, Observable):
+                observables.append(item)
+            elif isinstance(item, Constant):
+                constants.append(item)
             elif isinstance(item, Stratified):
                 stratified.append(item)
             elif isinstance(item, Entry):
@@ -71,14 +75,23 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             else:
                 models = item
         return Composition(
-            str(name), models or (), tuple(syncs), tuple(stratified), tuple(entries), **_at(name)
+            str(name),
+            models or (),
+            tuple(syncs),
+            tuple(stratified),
+            tuple(entries),
+            tuple(observables),
+            tuple(constants),
+            **_at(name),
         )
 
     def stratified_parameter(self, name: Token, by: Token, *rest: Any) -> Stratified:
-        return _stratified("parameter", name, by, rest)
+        *values, prior, unit = rest
+        return _stratified("parameter", name, by, values, unit, prior)
 
     def stratified_rate(self, name: Token, by: Token, *rest: Any) -> Stratified:
-        return _stratified("rate", name, by, rest)
+        *values, unit = rest
+        return _stratified("rate", name, by, values, unit, None)
 
     def stratum(self, state: Token, value: float) -> tuple[Ref, float]:
         return Ref(str(state), **_at(state)), value
@@ -212,11 +225,22 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
 
 
 def _stratified(
-    kind: Literal["parameter", "rate"], name: Token, by: Token, rest: tuple[Any, ...]
+    kind: Literal["parameter", "rate"],
+    name: Token,
+    by: Token,
+    values: list[Any],
+    unit: Token | None,
+    prior: Prior | None,
 ) -> Stratified:
-    *values, unit = rest
     return Stratified(
-        str(name), kind, Ref(str(by), **_at(by)), tuple(values), _unit(unit), **_at(name)
+        str(name),
+        kind,
+        Ref(str(by), **_at(by)),
+        tuple(values),
+        _unit(unit),
+        name.line or 0,
+        name.column or 0,
+        prior,
     )
 
 

@@ -265,12 +265,54 @@ compose AgeStructured {
 ```
 
 The inflow `flow -> S : mu * N` of `Epidemic` becomes `flow -> S_young : mu * N`.
-See [examples/sir_age_structured.epidsl](examples/sir_age_structured.epidsl) for
-both features together.
+
+### Observe and calibrate by stratum
+
+A `compose` block can declare its own constants and observables. They are written
+with the names of the composed model: a compartment such as `S_young`, a generated
+constant such as `beta_young`, or a group name such as `I` or `young`, which stands
+for a total.
+
+```
+compose AgeStructured {
+    models: [Epidemic, Age]
+
+    parameter beta by Age = { young: 0.6, old: 0.3 }
+    rate rho_young = 0.8 [1]
+    rate rho_old = 0.4 [1]
+
+    observe cases_young = rho_young * incidence(S_young -> I_young)
+    observe cases_old = rho_old * incidence(S_old -> I_old)
+}
+```
+
+In `incidence`, a group name counts every transition between the two groups:
+`incidence(S -> I)` is all new infections and `incidence(young -> old)` all ageing.
+
+A parameter stratified with `by` keeps the prior of the original, or takes the one
+written after its values (`... } prior uniform(0.1, 1)`). Each generated parameter
+is then estimated separately:
+
+```bash
+uv run epidsl calibrate examples/sir_age_structured.epidsl --model AgeStructured --data examples/age_weekly_cases.csv --seed 1
+```
+
+```
+parameter,mean,q0.025,q0.5,q0.975
+beta_young,0.5977532401017741,0.32833100358229744,0.6015675486652726,0.8736703893495928
+beta_old,0.3064468147009518,0.19243156341367465,0.2976122185897274,0.43279312186920177
+```
+
+The data are synthetic weekly cases by age group, produced with `beta_young = 0.6`
+and `beta_old = 0.3`. With the default five populations the intervals are wide.
+
+The full model is in
+[examples/sir_age_structured.epidsl](examples/sir_age_structured.epidsl).
 
 A composition is rejected when: a model is unknown or has errors; two models share
 a compartment or constant name; the models' total populations differ or are zero;
-they have no semantics in common; a joined or generated name is ambiguous; or a
+they have no semantics in common; a joined or generated name is ambiguous or
+already used; or a
 model has an inflow (`flow -> A`) and another model has no `enter` statement.
 Fewer than two models, and a malformed `sync`, `by` or `enter` statement, are
 rejected too.
@@ -297,6 +339,7 @@ first.
 | `sync a -> b, c -> d : expr` | Inside `compose`: a transition that moves two or more models at once, one move per model. |
 | `rate c by B = { x: 1, y: 2 }` | Inside `compose`: gives constant `c` one value per compartment of model `B`. Also with `parameter`. |
 | `enter B at x` | Inside `compose`: newcomers from another model's inflow enter `B` in compartment `x`. |
+| `rate`, `parameter`, `observe` | Inside `compose`: extra constants and observables of the composed model. |
 | `semantics: [ODE]` | Backends the model is valid for: `ODE`, `Gillespie`, `TauLeap`, `ABM`. Default `[ODE]`. |
 
 Expressions support `+ - * / ^`, parentheses, the built-in symbols `N` (total

@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.8
+**Version:** 1.9
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -277,7 +277,7 @@ and tests were added for them.
 
 **Limits:**
 - Observation model: addressed by D16.
-- A constant stratified with `by` cannot carry a prior.
+- Priors on stratified parameters: addressed by D17.
 - The posterior is approximate: its width depends on the final tolerance, hence on
   `--populations`.
 - Simulations run one after another.
@@ -312,10 +312,31 @@ fraction are recovered together from weekly cases.
 **Limits:**
 - No measurement noise (binomial reporting, negative-binomial overdispersion): an
   observable is a deterministic function of the simulation.
-- No `observe` inside a `compose` block, so cases cannot yet be broken down by
-  stratum (cases among the young).
-- An observable cannot use a constant stratified with `by`.
+- Observables by stratum: addressed by D17.
 - Reporting delays are not expressible.
+
+### D17 — Constants, observables and priors at the level of a composition (2026-11-15)
+
+**Decision:**
+- A `compose` block may declare `observe`, `rate` and `parameter` statements of its
+  own. They are written against the composed model: cell names, generated
+  constants, and group names (a group name is a total; in `incidence` it stands for
+  all the cells of the group).
+- A parameter stratified with `by` takes the prior written after its values, or
+  inherits the original's. A stratified `rate` never has a prior.
+
+**Rationale:** this closes the loop for the central use case — an age-structured
+model calibrated on cases by age. A reporting fraction per stratum is a plain
+constant of the block (`rho_young`), not a constant of a component stratified
+afterwards: the component has no use for it on its own, and a check (C7) says so.
+
+**Validation:** stratum incidence equals the decrease of that stratum's source (ODE
+and Gillespie); group names give totals; `beta_young` and `beta_old` are recovered
+together from cases by age. Ten deliberate faults were each caught.
+
+**Limits:**
+- An observable of a component still cannot use a constant that the block
+  stratifies; declare the observable in the block instead.
 
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
