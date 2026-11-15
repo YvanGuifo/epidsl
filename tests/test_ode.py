@@ -80,6 +80,14 @@ def test_refuses_model_not_declared_for_ode() -> None:
         ODEBackend().run(model, SimulationConfig(t_end=1.0))
 
 
+def test_rate_that_cannot_be_evaluated_is_reported() -> None:
+    # Division by zero from the first step. The error must surface as a RuntimeError
+    # and must not be raised through the solver, which aborts under some SciPy versions.
+    (model,) = parse("model Z { compartment X = 1, Y  flow X -> Y : X / Y }")
+    with pytest.raises(RuntimeError, match="a flow rate could not be evaluated"):
+        ODEBackend().run(model, SimulationConfig(t_end=1.0))
+
+
 def test_solver_failure_is_reported() -> None:
     # dx/dt = x^2 blows up at t = 1.
     (model,) = parse("model Boom { compartment X = 1  flow -> X : X ^ 2 }")

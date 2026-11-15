@@ -10,11 +10,14 @@ tau-leap) simulation, model composition and calibration work end to end (see
 
 ## Install
 
-Requires Python 3.11 or later and [uv](https://docs.astral.sh/uv/).
+EpiDSL is not published on PyPI yet. Work from a checkout: it requires Python 3.11
+or later and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
 ```
+
+Supported and tested: Python 3.11 to 3.14, NumPy 2.0 or later, SciPy 1.13 or later.
 
 ## Write a model
 
@@ -386,6 +389,24 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 ```
 
+To run the tests against the oldest dependencies that `pyproject.toml` allows:
+
+```bash
+uv run --isolated --resolution lowest-direct pytest
+```
+
+To build the package and try it in a clean environment:
+
+```bash
+uv build
+```
+
+```bash
+uv run --isolated --no-project --with dist/*.whl epidsl check examples/sir.epidsl
+```
+
+Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
 ## Roadmap
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend, CLI.
@@ -393,7 +414,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
    (`by`) and entry states for inflows (`enter`).
 3. **Done:** Gillespie and tau-leap stochastic backends, ensembles of runs.
 4. **Done:** calibration by ABC-SMC, observables and incidence.
-5. Network-based agent backend, language server, PyPI release.
+5. **Done:** release preparation (package builds and installs cleanly; not published).
+6. Network-based agent backend, language server, first PyPI release.
 
 Design rationale is recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).
 

@@ -6,6 +6,7 @@ import argparse
 import csv
 import sys
 from collections.abc import Sequence
+from importlib.metadata import version
 from pathlib import Path
 from typing import TextIO
 
@@ -214,6 +215,7 @@ def _quantiles(text: str) -> list[float]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="epidsl", description="EpiDSL compiler and simulator")
+    parser.add_argument("--version", action="version", version=f"epidsl {version('epidsl')}")
     commands = parser.add_subparsers(dest="command", required=True)
 
     check_cmd = commands.add_parser("check", help="parse a file and run the static checks")

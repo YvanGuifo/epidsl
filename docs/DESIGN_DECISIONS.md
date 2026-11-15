@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.9
+**Version:** 1.10
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -59,7 +59,8 @@ later dimensional checking. Units are currently stored as text and not interpret
 
 **Decision:** Provisional name `epidsl`, file extension `.epidsl`.
 
-**Action required:** confirm the name is free on PyPI before the first public release.
+**Checked 2026-11-15:** `epidsl` (and `epi-dsl`) return 404 on PyPI, so the name was
+free on that date. It is not reserved: only publishing a release reserves it.
 
 ### D5 — Comments
 
@@ -338,6 +339,30 @@ together from cases by age. Ten deliberate faults were each caught.
 - An observable of a component still cannot use a constant that the block
   stratifies; declare the observable in the block instead.
 
+### D18 — Release preparation (2026-11-15)
+
+**Done, and verified by running it:**
+- The wheel and source distribution build; the wheel contains the grammar, the
+  type marker, the licence and the README, and the installed `epidsl` command
+  works from a clean environment outside the repository.
+- The test suite passes on Python 3.11 and 3.14, and on the oldest dependencies
+  the metadata allows (NumPy 2.0.0, SciPy 1.13.0, Lark 1.3.1).
+- `LICENSE` (MIT), `CHANGELOG.md`, package metadata, `epidsl --version`.
+- CI gained a job on the oldest dependencies and a job that builds and installs
+  the package.
+- The copyright holder in `LICENSE` and the author name and e-mail address in
+  `pyproject.toml`, which become public metadata, were confirmed by the author.
+
+**Finding:** on SciPy 1.13.0, an exception raised by a rate during integration
+(overflow of a diverging model, division by zero) aborted the whole Python process
+instead of propagating. The ODE backend no longer raises through the solver: it
+records the error, returns NaN so the solver stops, and reports the error
+afterwards. The declared lower bound on SciPy had never been tested before.
+
+**Not done, and needing the author:**
+- Nothing is published, and CI has never run: both need a remote repository.
+- No version has been tagged; the changelog section is still "Unreleased".
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -352,7 +377,8 @@ check from C9 and has no number yet.
 3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Ensembles of runs (D13). Open:
    time-dependent rates in the stochastic backends.
 4. **Done:** calibration by ABC-SMC (D15), observables and incidence (D16).
-5. Network ABM backend; language server; PyPI release.
+5. **Done:** release preparation (D18).
+6. Network ABM backend; language server; first PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM
 code-generation benchmark task suite for EpiDSL; a Bayesian calibration backend
@@ -365,7 +391,6 @@ pre-proposal; optional carbon tracking of simulation runs.
 
 | ID | Question | Decision needed by |
 |----|----------|--------------------|
-| OQ1 | Is the PyPI name `epidsl` available? | Before first release |
 | OQ2 | C9 (mass conservation): error or warning for inflows and outflows? | When C9 is implemented |
 | OQ3 | How should a contact matrix (a rate depending on both parties' strata) be written? | Before realistic age-structured models |
 | OQ4 | Must source files be UTF-8 (Unicode in unit annotations such as `day⁻¹`)? | Language server |

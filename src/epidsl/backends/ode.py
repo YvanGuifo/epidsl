@@ -23,11 +23,21 @@ class ODEBackend:
         # One extra variable per tracked flow accumulates what it has moved.
         counter = {flow: n + i for i, flow in enumerate(compiled.tracked)}
 
+        failure: list[Exception] = []
+
         def rhs(t: float, y: NDArray[np.float64]) -> NDArray[np.float64]:
             state = y[:n]
             dy = np.zeros_like(y)
             for j, flow in enumerate(compiled.flows):
-                value = flow.rate(state, t)
+                try:
+                    value = flow.rate(state, t)
+                except (ArithmeticError, ValueError) as error:
+                    # A rate left the representable range (overflow, division by zero,
+                    # log of a negative number). Do not raise through the solver: some
+                    # SciPy versions abort the interpreter. Remember the error and hand
+                    # back NaN, which makes the solver stop.
+                    failure.append(error)
+                    return np.full_like(y, np.nan)
                 if flow.source is not None:
                     dy[flow.source] -= value
                 if flow.target is not None:
@@ -38,23 +48,20 @@ class ODEBackend:
 
         grid = config.grid()
         y0 = np.concatenate([compiled.initial, np.zeros(len(compiled.tracked))])
-        try:
-            solution = solve_ivp(
-                rhs,
-                (float(grid[0]), float(grid[-1])),
-                y0,
-                method="LSODA",
-                t_eval=grid,
-                rtol=self.rtol,
-                atol=self.atol,
-            )
-        except (ArithmeticError, ValueError) as error:
-            # A rate left the representable range (overflow, division by zero, log of a
-            # negative number): the trajectory has diverged or the model is ill-posed.
+        solution = solve_ivp(
+            rhs,
+            (float(grid[0]), float(grid[-1])),
+            y0,
+            method="LSODA",
+            t_eval=grid,
+            rtol=self.rtol,
+            atol=self.atol,
+        )
+        if failure:
             raise RuntimeError(
                 f"ODE solver failed for model {model.name}: "
-                f"a flow rate could not be evaluated ({error})"
-            ) from error
+                f"a flow rate could not be evaluated ({failure[0]})"
+            ) from failure[0]
         if not solution.success:
             raise RuntimeError(f"ODE solver failed for model {model.name}: {solution.message}")
 

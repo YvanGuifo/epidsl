@@ -118,3 +118,10 @@ def test_run_tau_leap(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     assert rows[0] == ["t", "S", "I", "R"]
     assert all(sum(float(x) for x in row[1:]) == 100000.0 for row in rows[1:])
     assert float(rows[-1][3]) > 0
+
+
+def test_version(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--version"])
+    assert excinfo.value.code == 0
+    assert capsys.readouterr().out.startswith("epidsl 0.")
