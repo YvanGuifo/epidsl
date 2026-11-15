@@ -58,8 +58,18 @@ list the method in its `semantics` (`Gillespie` or `TauLeap`).
 uv run epidsl run examples/sir.epidsl --t-end 160 --method gillespie --seed 1
 ```
 
-`--seed` makes the run reproducible; without it each run differs. To estimate a
-mean or a spread, run several seeds and combine the CSV files.
+`--seed` makes the run reproducible; without it each run differs.
+
+To summarise many runs, add `--runs`. The CSV then holds, for each compartment, the
+mean over the runs and the quantiles given by `--quantiles` (by default 0.025 and
+0.975, a 95% band), in columns such as `I_mean`, `I_q0.025` and `I_q0.975`:
+
+```bash
+uv run epidsl run examples/sir.epidsl --t-end 160 --method gillespie --runs 200 --seed 1
+```
+
+With `--runs`, `--seed` fixes the whole set of runs. `--runs` is refused with the
+ODE method, which always gives the same trajectory.
 
 Both methods require whole-number initial values and rates that do not use `t`. A
 flow never fires from an empty compartment, and a rate that evaluates to a negative
@@ -67,7 +77,7 @@ number stops the run with an error.
 
 Tau-leap chooses its own step sizes, and switches to exact steps while few
 individuals are involved. Its error shrinks with its accuracy parameter `epsilon`
-(default 0.03, set from Python with `TauLeapBackend(epsilon=...)`): on a 100 000
+(default 0.03, set with `--epsilon`): on a 100 000
 person SIR epidemic the mean trajectory is within about 0.6% of the population
 of the ODE solution at 0.03, and 0.2% at 0.01.
 
@@ -174,7 +184,7 @@ trailing `;` after a statement is optional.
 | Command | Options |
 |---------|---------|
 | `epidsl check FILE` | `--strict` |
-| `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--model NAME`, `--out PATH`, `--strict` |
+| `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--runs K`, `--quantiles Q1,Q2,...` (default `0.025,0.975`), `--epsilon E` (tau-leap only, default 0.03), `--model NAME`, `--out PATH`, `--strict` |
 
 Both commands exit with status 0 on success and 1 on any error.
 
@@ -192,7 +202,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend, CLI.
 2. **Done:** `compose` blocks with `sync` rules (stochastic automata network composition).
-3. **Done:** Gillespie and tau-leap stochastic backends.
+3. **Done:** Gillespie and tau-leap stochastic backends, ensembles of runs.
 4. Network-based agent backend, calibration, language server, PyPI release.
 
 Design rationale is recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).

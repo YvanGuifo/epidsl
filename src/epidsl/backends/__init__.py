@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import numpy as np
 from numpy.typing import NDArray
 
 from epidsl.checks import errors
 from epidsl.expr import Evaluator, compile_expr
-from epidsl.ir import EpiModel, Semantics
+from epidsl.ir import EpiModel, Semantics, SimulationConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +20,12 @@ class BackendResult:
     t: NDArray[np.float64]
     y: dict[str, NDArray[np.float64]]
     metadata: dict[str, object] = field(default_factory=dict)
+
+
+class Backend(Protocol):
+    """Anything that can simulate a model."""
+
+    def run(self, model: EpiModel, config: SimulationConfig) -> BackendResult: ...
 
 
 @dataclass(frozen=True, slots=True)

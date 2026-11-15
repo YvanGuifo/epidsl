@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.4
+**Version:** 1.5
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -160,8 +160,7 @@ Each flow is a jump of one individual whose propensity is the flow's expression.
 immigration–death process against its Poisson stationary law (mean and variance,
 400 seeded runs each).
 
-**Not done:** ensembles (several runs with summary statistics) in the CLI, and any
-performance work — the loop is plain Python.
+**Not done:** any performance work — the loop is plain Python.
 
 ### D12 — Tau-leap backend (2026-11-15)
 
@@ -192,6 +191,24 @@ of the immigration–death process; small populations are simulated exactly.
 **Test-suite check:** seven deliberate faults (three in tau-leap, two in
 Gillespie, two in composition) were each caught by at least one test.
 
+### D13 — Ensembles (2026-11-15)
+
+**Decision:** `run_ensemble(backend, model, config, runs)` runs any backend several
+times and returns all trajectories; `epidsl run --runs K` writes their mean and
+quantiles.
+
+- **Seeds.** Per-run seeds are drawn from NumPy's `SeedSequence(config.seed)`, so
+  one master seed reproduces the whole ensemble and each run can be reproduced
+  alone from its recorded seed.
+- **Output.** The CLI writes a summary (mean and quantiles per compartment), not
+  the individual runs. The Python API keeps every run.
+- **ODE.** `--runs` is refused with the ODE method.
+
+**Rationale:** calibration will compare summaries of many simulations with data, so
+ensembles and reproducible seeding come first.
+
+**Not done:** running the simulations in parallel; writing individual runs from the CLI.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -203,8 +220,8 @@ check from C9 and has no number yet.
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend (SciPy LSODA), CLI.
 2. **Done:** `compose` and `sync`. Next for composition: state-dependent rates
    and inflows (see D10).
-3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Open: time-dependent rates in
-   the stochastic backends, and ensembles of runs.
+3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Ensembles of runs (D13). Open:
+   time-dependent rates in the stochastic backends.
 4. Network ABM backend; calibration (ABC-SMC); language server; PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM
