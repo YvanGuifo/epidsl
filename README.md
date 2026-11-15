@@ -79,8 +79,8 @@ Both methods require whole-number initial values and rates that do not use `t`. 
 flow never fires from an empty compartment, and a rate that evaluates to a negative
 number stops the run with an error.
 
-Tau-leap chooses its own step sizes, and switches to exact steps while few
-individuals are involved. Its error shrinks with its accuracy parameter `epsilon`
+Tau-leap chooses its own step sizes, following Cao, Gillespie and Petzold (2006),
+and switches to exact steps while few individuals are involved. Its error shrinks with its accuracy parameter `epsilon`
 (default 0.03, set with `--epsilon`): on a 100 000
 person SIR epidemic the mean trajectory is within about 0.6% of the population
 of the ODE solution at 0.03, and 0.2% at 0.01.
@@ -171,7 +171,8 @@ tolerance and the effective sample size. `--out` writes the full weighted sample
 | `loguniform(a, b)` | Between `a` and `b`, with each order of magnitude equally likely. Both must be positive. |
 | `normal(m, s)` | Centred on `m` with standard deviation `s`. |
 
-The method is ABC-SMC (approximate Bayesian computation, sequential Monte Carlo):
+The method is ABC-SMC (approximate Bayesian computation, sequential Monte Carlo;
+Toni et al. 2009, with the adaptive kernel of Beaumont et al. 2009):
 it repeatedly simulates the model with candidate values and keeps those whose
 simulation is closest to the data, tightening the tolerance at each of
 `--populations` rounds. It works with any `--method`. Each simulation starts at
@@ -417,7 +418,9 @@ Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 5. **Done:** release preparation (package builds and installs cleanly; not published).
 6. Network-based agent backend, language server, first PyPI release.
 
-Design rationale is recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).
+Design rationale, and how each method differs from the paper it follows, are
+recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md). References are in
+[docs/references.bib](docs/references.bib).
 
 ## License
 

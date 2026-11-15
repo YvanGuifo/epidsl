@@ -4,6 +4,11 @@ Same jump process as the Gillespie backend, but a step of length ``tau`` fires e
 flow a Poisson number of times at once, with rates frozen at the start of the step.
 When leaping would not save work (few individuals involved), single exact Gillespie
 steps are taken instead.
+
+The step selection follows Cao, Gillespie and Petzold (2006, J. Chem. Phys. 124,
+044109) with their factor ``g`` set to 1, and adds a bound on the fraction leaving
+each compartment in place of their separate treatment of critical reactions. See
+D12 in docs/DESIGN_DECISIONS.md for the differences.
 """
 
 from __future__ import annotations

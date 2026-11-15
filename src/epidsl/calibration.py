@@ -12,6 +12,10 @@ every backend:
 3. Repeat. Each population is a weighted sample that approximates the posterior more
    closely as the tolerance shrinks.
 
+The weights are those of Toni et al. (2009, J. R. Soc. Interface 6, 187) and the
+perturbation kernel that of Beaumont et al. (2009, Biometrika 96, 983); tolerances
+are adaptive. See D15 in docs/DESIGN_DECISIONS.md for the differences.
+
 A parameter with a ``loguniform`` prior is handled on a logarithmic scale throughout:
 a perturbation of fixed size on a linear scale would be far too large at the low end
 of a range that spans several orders of magnitude, and the weights would degenerate.

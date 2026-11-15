@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.11
+**Version:** 1.12
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -175,11 +175,25 @@ single exact Gillespie steps when a leap would cover fewer than 10 expected even
 - **Step size.** With accuracy parameter `epsilon` (default 0.03), the step is the
   largest for which, for every compartment: the expected net change and its
   standard deviation stay below `max(epsilon * size, 1)`, and no more than a
-  fraction `epsilon` of the compartment is expected to leave. The first two bounds
-  follow the idea of Cao, Gillespie and Petzold's step selection; the third was
-  added because without it the stationary variance of an immigration–death process
-  is overestimated (a test covers this). *The exact correspondence with the
-  published procedure has not been checked against the paper.*
+  fraction `epsilon` of the compartment is expected to leave.
+- **Relation to Cao, Gillespie and Petzold 2006, checked against the paper on
+  2026-11-15.** Taken from the paper: the form of the first two bounds,
+  `max(eps * x / g, 1) / |mu|` and `max(eps * x / g, 1)^2 / sigma^2`; switching to
+  exact steps when the step is below 10 mean inter-event times; halving a step that
+  gives a negative population; and `epsilon = 0.03`. Differences:
+  - The paper sets `g` from the order of the reactions a species takes part in (1
+    for first order, 2 for second order, with corrections). EpiDSL uses `g = 1`
+    throughout, because a rate is an arbitrary expression whose order is not known.
+    For mass-action infection, a given `epsilon` therefore allows steps up to twice
+    as long as in the paper; halve `epsilon` to compare.
+  - The paper treats *critical* reactions (within about 10 firings of exhausting a
+    reactant) separately, by exact simulation. EpiDSL has no such partition; the
+    third bound above, which is not in the paper, plays that part. It was added
+    because without it the stationary variance of an immigration–death process was
+    overestimated (a test covers this).
+  - The paper takes 100 exact steps before trying to leap again; EpiDSL takes one.
+    This changes cost, not results.
+  - The paper's bounds range over reactant species; EpiDSL's over all compartments.
 - **Negative counts.** A leap that would empty a compartment below zero is
   discarded and retried with half the step.
 - **Output.** Steps are cut at output times, so reported states are states of the
@@ -258,12 +272,21 @@ parameter by ABC-SMC. Check C11 rejects an ill-defined prior or a value outside 
 - **Distance:** root mean squared error after interpolating the simulation to the
   observation times, each series divided by its largest observed magnitude.
 - **Tolerances:** adaptive — each is the median distance of the previous population.
-- **Perturbation and weights:** Gaussian perturbation with twice the weighted
-  variance of the current population, and importance weights
-  `prior / sum(weights * kernel)`. *Written from memory of Toni et al. 2009 and
-  Beaumont et al. 2009; not checked against the papers.*
+- **Perturbation and weights, checked against both papers on 2026-11-15.** The
+  weights are those of Toni et al. 2009, `prior / sum(weights * kernel)`, and a
+  proposal outside the prior is discarded without simulating, as there. The kernel
+  is that of Beaumont et al. 2009: component-wise Gaussian with twice the weighted
+  empirical variance of the current population. Differences:
+  - Toni et al. fix the tolerances in advance and apply the first to the draws from
+    the prior. EpiDSL accepts every draw from the prior, then sets each tolerance to
+    the median distance of the previous population (Beaumont et al. mention choosing
+    tolerances from quantiles of earlier iterations).
+  - Toni et al. reject a simulation at a distance equal to the tolerance; EpiDSL
+    accepts it.
+  - For stochastic models Toni et al. describe a variant with several simulations
+    per particle; EpiDSL always uses one.
 - **Scale:** a `loguniform` parameter is sampled, perturbed and weighted on a
-  logarithmic scale.
+  logarithmic scale. This is not in either paper.
 
 **Findings while building it:**
 - With a `loguniform` prior over four orders of magnitude and a linear-scale
@@ -428,8 +451,10 @@ Europe PMC or jmlr.org. Entries are in [references.bib](references.bib).
 - Henderson et al. 2020: title confirmed on jmlr.org; volume and pages not re-checked.
 - Page et al. 2021 (DOI 10.1136/bmj.n160) exists but is cited nowhere in this project.
 - Added: Cao, Gillespie, Petzold 2006 (DOI 10.1063/1.2159468) and Beaumont et al.
-  2009 (DOI 10.1093/biomet/asp052), which D12 and D15 refer to. **Their existence is
-  confirmed; that the code follows their procedures is still unchecked.**
+  2009 (DOI 10.1093/biomet/asp052), which D12 and D15 refer to. The code was
+  compared with these two papers and with Toni et al. 2009; D12 and D15 list what
+  is taken from them and what differs. The versions read were the authors' preprints
+  (arXiv:0901.1925, arXiv:0805.2256, and the copy of Cao et al. on a UCSB server).
 
 ### Other tools
 
