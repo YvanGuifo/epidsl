@@ -12,6 +12,12 @@ The composition is their product, in the manner of a stochastic automata network
 * **Rates.** In a rate expression, the name of the flow's source denotes the specific
   source compartment; any other state name, or ``_``-joined group of state names,
   denotes the marginal total over the models it does not mention.
+* **Stratified constants.** ``rate beta by Age = {young: .., old: ..}`` replaces the
+  constant ``beta`` by one constant per state of ``Age`` (``beta_young``, ...). A
+  transition uses the one of the cell it leaves (or enters, for an inflow): this is
+  a rate of one automaton that depends on the state of another.
+* **Inflows.** Newcomers of one model's inflow enter the other models in the state
+  given by ``enter Model at state``.
 
 The result is a plain EpiModel, so every backend supports composition unchanged.
 """
@@ -21,7 +27,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from itertools import combinations, product
-from typing import NoReturn
+from typing import NoReturn, Protocol
 
 from epidsl.checks import errors
 from epidsl.errors import CompositionError
@@ -35,7 +41,6 @@ from epidsl.ir import (
     Expr,
     Flow,
     Neg,
-    Ref,
     Semantics,
     Sym,
     Sync,
@@ -47,7 +52,14 @@ __all__ = ["CompositionError", "flatten"]
 Cell = tuple[str, ...]
 
 
-def _fail(message: str, node: Composition | Ref) -> NoReturn:
+class _Positioned(Protocol):
+    @property
+    def line(self) -> int: ...
+    @property
+    def column(self) -> int: ...
+
+
+def _fail(message: str, node: _Positioned) -> NoReturn:
     raise CompositionError(message, node.line, node.column)
 
 
@@ -71,16 +83,21 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
         problems = errors(part)
         if problems:
             _fail(f"model '{part.name}' has errors: {problems[0].message}", ref)
-        for flow in part.flows:
-            if flow.source is None:
-                _fail(
-                    f"model '{part.name}' has an inflow, which cannot be composed yet: "
-                    "the stratum that newcomers enter is unspecified",
-                    ref,
-                )
 
     owner = _owners(composition, parts)
-    constants = _constants(composition, parts)
+    index = {ref.name: i for i, ref in enumerate(composition.models)}
+    entry = _entries(composition, parts, index)
+    for i, (ref, part) in enumerate(zip(composition.models, parts, strict=True)):
+        if any(flow.source is None for flow in part.flows):
+            for j, other in enumerate(parts):
+                if j != i and j not in entry:
+                    _fail(
+                        f"model '{part.name}' has an inflow: say which state of '{other.name}' "
+                        f"newcomers enter with 'enter {other.name} at <compartment>'",
+                        ref,
+                    )
+
+    constants, strata = _stratify(composition, parts, index, _constants(composition, parts))
     total = _common_total(composition, parts)
     semantics = _semantics(composition, parts)
 
@@ -101,9 +118,14 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
     flows: list[Flow] = []
     for i, part in enumerate(parts):
         for flow in part.flows:
-            assert flow.source is not None
+            if flow.source is None:
+                assert flow.target is not None
+                cell = tuple(flow.target if j == i else entry[j] for j in range(len(parts)))
+                expr = _rewrite(flow.expr, None, "", marginals, _renames(cell, strata))
+                flows.append(Flow(None, _name(cell), expr, flow.line, flow.column))
+                continue
             moves = {i: (flow.source, flow.target)}
-            flows.extend(_lift(moves, flow.source, flow, cells, marginals))
+            flows.extend(_lift(moves, flow.source, flow, cells, marginals, strata))
     for sync in composition.syncs:
         sync_moves: dict[int, tuple[str, str | None]] = {}
         for source, target in sync.moves:
@@ -122,7 +144,7 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
                 _fail("a sync rule takes at most one move per model", source)
             sync_moves[owner[source.name]] = (source.name, target.name)
         key = _name(tuple(sync_moves[i][0] for i in sorted(sync_moves)))
-        flows.extend(_lift(sync_moves, key, sync, cells, marginals))
+        flows.extend(_lift(sync_moves, key, sync, cells, marginals, strata))
 
     return EpiModel(
         name=composition.name,
@@ -165,6 +187,92 @@ def _constants(composition: Composition, parts: list[EpiModel]) -> dict[str, Con
             constants[constant.name] = constant
             declared_by[constant.name] = part.name
     return constants
+
+
+def _entries(
+    composition: Composition, parts: list[EpiModel], index: Mapping[str, int]
+) -> dict[int, str]:
+    """Map a model's index to the state newcomers enter, from the ``enter`` statements."""
+    entry: dict[int, str] = {}
+    for declared in composition.entries:
+        model, state = declared.model, declared.state
+        if model.name not in index:
+            _fail(f"'{model.name}' is not one of the composed models", model)
+        i = index[model.name]
+        if i in entry:
+            _fail(f"model '{model.name}' has more than one entry state", model)
+        if state.name not in {c.name for c in parts[i].compartments}:
+            _fail(f"'{state.name}' is not a compartment of model '{model.name}'", state)
+        entry[i] = state.name
+    return entry
+
+
+#: For each stratified constant: the index of the model it varies by, and the name
+#: of the constant that replaces it in each state of that model.
+Strata = dict[str, tuple[int, dict[str, str]]]
+
+
+def _stratify(
+    composition: Composition,
+    parts: list[EpiModel],
+    index: Mapping[str, int],
+    constants: dict[str, Constant],
+) -> tuple[dict[str, Constant], Strata]:
+    """Replace each stratified constant by one constant per state of its ``by`` model."""
+    strata: Strata = {}
+    for declared in composition.stratified:
+        name = declared.name
+        if name in strata:
+            _fail(f"constant '{name}' is stratified more than once", declared)
+        if name not in constants:
+            _fail(f"no composed model declares a constant '{name}'", declared)
+        if declared.by.name not in index:
+            _fail(f"'{declared.by.name}' is not one of the composed models", declared.by)
+        by = index[declared.by.name]
+        states = [c.name for c in parts[by].compartments]
+
+        given: dict[str, float] = {}
+        for state, value in declared.values:
+            if state.name not in states:
+                _fail(f"'{state.name}' is not a compartment of model '{declared.by.name}'", state)
+            if state.name in given:
+                _fail(f"'{state.name}' is given more than once", state)
+            given[state.name] = value
+        missing = [f"'{local}'" for local in states if local not in given]
+        if missing:
+            _fail(f"constant '{name}' has no value for {', '.join(missing)}", declared)
+
+        unit = declared.unit if declared.unit is not None else constants[name].unit
+        generated = {local: f"{name}_{local}" for local in states}
+        replaced: dict[str, Constant] = {}
+        for existing, constant in constants.items():
+            if existing != name:
+                replaced[existing] = constant
+                continue
+            for local in states:
+                replaced[generated[local]] = Constant(
+                    generated[local],
+                    declared.kind,
+                    given[local],
+                    unit,
+                    declared.line,
+                    declared.column,
+                )
+        for new_name in generated.values():
+            if new_name in constants:
+                _fail(
+                    f"the name '{new_name}' is ambiguous in compose {composition.name}; "
+                    "rename a compartment or constant",
+                    declared,
+                )
+        constants = replaced
+        strata[name] = (by, generated)
+    return constants, strata
+
+
+def _renames(cell: Cell, strata: Strata) -> dict[str, str]:
+    """The stratified constants as seen from ``cell``: original name -> its replacement."""
+    return {name: generated[cell[by]] for name, (by, generated) in strata.items()}
 
 
 def _common_total(composition: Composition, parts: list[EpiModel]) -> float:
@@ -217,6 +325,7 @@ def _lift(
     origin: Flow | Sync,
     cells: list[Cell],
     marginals: Mapping[str, list[str]],
+    strata: Strata,
 ) -> list[Flow]:
     """Instantiate a transition in every cell whose states match the moves' sources."""
     lifted: list[Flow] = []
@@ -233,7 +342,7 @@ def _lift(
             Flow(
                 _name(cell),
                 destination,
-                _rewrite(origin.expr, source_name, _name(cell), marginals),
+                _rewrite(origin.expr, source_name, _name(cell), marginals, _renames(cell, strata)),
                 origin.line,
                 origin.column,
             )
@@ -241,11 +350,23 @@ def _lift(
     return lifted
 
 
-def _rewrite(expr: Expr, source_name: str, cell: str, marginals: Mapping[str, list[str]]) -> Expr:
-    """Replace the source's name by its cell and every other group name by a sum of cells."""
+def _rewrite(
+    expr: Expr,
+    source_name: str | None,
+    cell: str,
+    marginals: Mapping[str, list[str]],
+    renames: Mapping[str, str],
+) -> Expr:
+    """Rewrite a rate for one cell.
+
+    The source's name becomes its cell, any other group name a sum of cells, and a
+    stratified constant its replacement for this cell.
+    """
     match expr:
         case Sym(name, line, column) if name == source_name:
             return Sym(cell, line, column)
+        case Sym(name, line, column) if name in renames:
+            return Sym(renames[name], line, column)
         case Sym(name, line, column) if name in marginals:
             terms: list[Expr] = [Sym(member, line, column) for member in marginals[name]]
             total = terms[0]
@@ -253,16 +374,15 @@ def _rewrite(expr: Expr, source_name: str, cell: str, marginals: Mapping[str, li
                 total = BinOp("+", total, term)
             return total
         case Neg(operand):
-            return Neg(_rewrite(operand, source_name, cell, marginals))
+            return Neg(_rewrite(operand, source_name, cell, marginals, renames))
         case BinOp(op, left, right):
             return BinOp(
                 op,
-                _rewrite(left, source_name, cell, marginals),
-                _rewrite(right, source_name, cell, marginals),
+                _rewrite(left, source_name, cell, marginals, renames),
+                _rewrite(right, source_name, cell, marginals, renames),
             )
         case Call(func, args, line, column):
-            return Call(
-                func, tuple(_rewrite(a, source_name, cell, marginals) for a in args), line, column
-            )
+            rewritten = tuple(_rewrite(a, source_name, cell, marginals, renames) for a in args)
+            return Call(func, rewritten, line, column)
         case _:
             return expr

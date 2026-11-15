@@ -119,12 +119,37 @@ class Sync:
 
 
 @dataclass(frozen=True, slots=True)
+class Stratified:
+    """A constant of one composed model given one value per state of another (``by``)."""
+
+    name: str
+    kind: Literal["parameter", "rate"]
+    by: Ref
+    values: tuple[tuple[Ref, float], ...]
+    unit: str | None = None
+    line: int = _pos()
+    column: int = _pos()
+
+
+@dataclass(frozen=True, slots=True)
+class Entry:
+    """The state of ``model`` that newcomers from another model's inflow enter."""
+
+    model: Ref
+    state: Ref
+    line: int = _pos()
+    column: int = _pos()
+
+
+@dataclass(frozen=True, slots=True)
 class Composition:
     """A ``compose`` block, before it is flattened into an EpiModel."""
 
     name: str
     models: tuple[Ref, ...]
     syncs: tuple[Sync, ...]
+    stratified: tuple[Stratified, ...] = ()
+    entries: tuple[Entry, ...] = ()
     line: int = _pos()
     column: int = _pos()
 

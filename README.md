@@ -133,11 +133,49 @@ In a `sync` rate, the source is named by joining the moves' sources (`S_home`).
 With more than two models, a joined name that leaves some models out is a total
 over them, and the rule is copied into each of their states.
 
+### Make a rate depend on another model
+
+Inside `compose`, `by` gives a constant of one model a value for each state of
+another:
+
+```
+compose AgeStructured {
+    models: [Epidemic, Age]
+    parameter beta by Age = { young: 0.6, old: 0.3 }
+}
+```
+
+`beta` is replaced by the constants `beta_young` and `beta_old`, and each
+transition uses the one of the compartment it leaves: infection of `S_young` runs
+at `beta_young * S_young * I / N`. Every state of the `by` model needs a value. The
+unit is kept from the original constant unless a new one is given.
+
+This expresses a rate that depends on the state of the individual who moves, such
+as susceptibility by age. It does not express a contact matrix, in which the rate
+also depends on the age of the people met.
+
+### Say where newcomers enter
+
+A model with an inflow, such as births, can be composed once every other model
+states which of its compartments newcomers enter:
+
+```
+compose AgeStructured {
+    models: [Epidemic, Age]
+    enter Age at young
+}
+```
+
+The inflow `flow -> S : mu * N` of `Epidemic` becomes `flow -> S_young : mu * N`.
+See [examples/sir_age_structured.epidsl](examples/sir_age_structured.epidsl) for
+both features together.
+
 A composition is rejected when: a model is unknown or has errors; two models share
 a compartment or constant name; the models' total populations differ or are zero;
-they have no semantics in common; a joined name is ambiguous; or a model has an
-inflow (`flow -> A`), which cannot be composed yet. Fewer than two models, and a
-malformed `sync` rule, are rejected too.
+they have no semantics in common; a joined or generated name is ambiguous; or a
+model has an inflow (`flow -> A`) and another model has no `enter` statement.
+Fewer than two models, and a malformed `sync`, `by` or `enter` statement, are
+rejected too.
 
 A composed model is an ordinary model: it can be listed in another `compose`
 block, and `models: [A, B, C]` gives the same model as composing `A` and `B`
@@ -157,12 +195,16 @@ first.
 | `compose Name { ... }` | Declares the product of several models. |
 | `models: [A, B]` | Inside `compose`: the models to compose, two or more. |
 | `sync a -> b, c -> d : expr` | Inside `compose`: a transition that moves two or more models at once, one move per model. |
+| `rate c by B = { x: 1, y: 2 }` | Inside `compose`: gives constant `c` one value per compartment of model `B`. Also with `parameter`. |
+| `enter B at x` | Inside `compose`: newcomers from another model's inflow enter `B` in compartment `x`. |
 | `semantics: [ODE]` | Backends the model is valid for: `ODE`, `Gillespie`, `TauLeap`, `ABM`. Default `[ODE]`. |
 
 Expressions support `+ - * / ^`, parentheses, the built-in symbols `N` (total
 population) and `t` (time), and the functions `exp`, `log`, `sqrt`, `sin`, `cos`,
 `abs`, `min`, `max`. Comments are `-- to end of line` and `/* block */`. A
-trailing `;` after a statement is optional.
+trailing `;` after a statement is optional. The keywords (`model`, `compose`,
+`compartment`, `parameter`, `rate`, `flow`, `semantics`, `models`, `sync`, `enter`,
+`by`, `at`) cannot be used as names.
 
 ### Static checks
 
@@ -201,7 +243,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 ## Roadmap
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend, CLI.
-2. **Done:** `compose` blocks with `sync` rules (stochastic automata network composition).
+2. **Done:** `compose` blocks with `sync` rules, rates that depend on another model
+   (`by`) and entry states for inflows (`enter`).
 3. **Done:** Gillespie and tau-leap stochastic backends, ensembles of runs.
 4. Network-based agent backend, calibration, language server, PyPI release.
 

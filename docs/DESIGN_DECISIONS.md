@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.5
+**Version:** 1.6
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -133,11 +133,7 @@ into an ordinary model before any backend sees it.
 - Composition is associative: `[A, B, C]` equals composing `[A, B]` first (OQ3).
 
 **Limits, to revisit:**
-- A model with an inflow cannot be composed: the stratum newcomers enter is
-  unspecified. This excludes births for now.
-- A rate cannot yet depend on another model's state without a `sync` move (for
-  example an age-specific `beta`, or admitting only infected people to hospital).
-  This is the next extension to design.
+- Inflows and state-dependent rates: addressed by D14.
 - Whether this reading matches Kendrick's composition operator has not been
   checked against the paper.
 
@@ -209,6 +205,39 @@ ensembles and reproducible seeding come first.
 
 **Not done:** running the simulations in parallel; writing individual runs from the CLI.
 
+### D14 — Stratified constants and entry states (2026-11-15)
+
+**Decision (chosen by the author among three options each):**
+
+- `rate c by B = { x: v1, y: v2 }` (or `parameter`) inside `compose` gives constant
+  `c` one value per compartment of model `B`. It is replaced by the constants `c_x`,
+  `c_y`; a transition uses the one of the cell it leaves, and an inflow the one of
+  the cell it enters. This is a SAN functional rate: the rate of one automaton
+  depends on the state of another.
+- `enter B at x` states which compartment of `B` newcomers from another model's
+  inflow enter. A model with an inflow is composable only when every other model
+  has an entry state; nothing is assumed otherwise.
+
+**Alternatives not taken:** redefining a lifted flow per stratum (general, verbose);
+splitting inflows in proportion to the other model's current distribution (wrong
+for age).
+
+**Rationale:** named constants per stratum, rather than inlined values, keep units
+and let calibration target `beta_young` directly.
+
+**Validation:** equal values reproduce the unstratified model; with susceptibility
+by age and no ageing, `S_young(t)/S_young(0) = (S_old(t)/S_old(0))^(beta_young/beta_old)`
+holds along the trajectory; with births entering `young`, the status marginals
+reproduce the uncomposed model and the young population reaches
+`mu * N / (aging + mu)`.
+
+**Limits:**
+- A rate depends on the state of the individual who moves, not on who they meet: a
+  contact matrix (age by age) is not expressible yet.
+- A constant can be stratified by one model only.
+- Restricting a transition to some strata (admitting only infected people to
+  hospital) still has no syntax; a stratified rate set to zero is the workaround.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -218,8 +247,8 @@ check from C9 and has no number yet.
 ## Roadmap
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend (SciPy LSODA), CLI.
-2. **Done:** `compose` and `sync`. Next for composition: state-dependent rates
-   and inflows (see D10).
+2. **Done:** `compose`, `sync`, stratified constants and entry states (D10, D14).
+   Next for composition: contact matrices (OQ3).
 3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Ensembles of runs (D13). Open:
    time-dependent rates in the stochastic backends.
 4. Network ABM backend; calibration (ABC-SMC); language server; PyPI release.
@@ -237,7 +266,7 @@ pre-proposal; optional carbon tracking of simulation runs.
 |----|----------|--------------------|
 | OQ1 | Is the PyPI name `epidsl` available? | Before first release |
 | OQ2 | C9 (mass conservation): error or warning for inflows and outflows? | When C9 is implemented |
-| OQ3 | How should a rate depend on another model's state, and where do inflows enter a product? | Before age-structured examples |
+| OQ3 | How should a contact matrix (a rate depending on both parties' strata) be written? | Before realistic age-structured models |
 | OQ4 | Must source files be UTF-8 (Unicode in unit annotations such as `day⁻¹`)? | Language server |
 
 ---

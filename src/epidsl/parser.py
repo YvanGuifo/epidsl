@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from lark import Lark, Token, Transformer, v_args
 from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken, VisitError
@@ -17,6 +17,7 @@ from epidsl.ir import (
     Compartment,
     Composition,
     Constant,
+    Entry,
     EpiModel,
     Expr,
     Flow,
@@ -24,6 +25,7 @@ from epidsl.ir import (
     Num,
     Ref,
     Semantics,
+    Stratified,
     Sym,
     Sync,
 )
@@ -47,17 +49,39 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
     def start(self, *items: EpiModel | Composition) -> tuple[EpiModel | Composition, ...]:
         return items
 
-    def compose(self, name: Token, *statements: tuple[Ref, ...] | Sync) -> Composition:
+    def compose(
+        self, name: Token, *statements: tuple[Ref, ...] | Sync | Stratified | Entry
+    ) -> Composition:
         models: tuple[Ref, ...] | None = None
         syncs: list[Sync] = []
+        stratified: list[Stratified] = []
+        entries: list[Entry] = []
         for item in statements:
             if isinstance(item, Sync):
                 syncs.append(item)
+            elif isinstance(item, Stratified):
+                stratified.append(item)
+            elif isinstance(item, Entry):
+                entries.append(item)
             elif models is not None:
                 raise EpiSyntaxError(f"compose {name} declares models twice", **_at(name))
             else:
                 models = item
-        return Composition(str(name), models or (), tuple(syncs), **_at(name))
+        return Composition(
+            str(name), models or (), tuple(syncs), tuple(stratified), tuple(entries), **_at(name)
+        )
+
+    def stratified_parameter(self, name: Token, by: Token, *rest: Any) -> Stratified:
+        return _stratified("parameter", name, by, rest)
+
+    def stratified_rate(self, name: Token, by: Token, *rest: Any) -> Stratified:
+        return _stratified("rate", name, by, rest)
+
+    def stratum(self, state: Token, value: float) -> tuple[Ref, float]:
+        return Ref(str(state), **_at(state)), value
+
+    def enter(self, model: Token, state: Token) -> Entry:
+        return Entry(Ref(str(model), **_at(model)), Ref(str(state), **_at(state)), **_at(model))
 
     def models(self, *names: Token) -> tuple[Ref, ...]:
         return tuple(Ref(str(name), **_at(name)) for name in names)
@@ -159,6 +183,15 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
 
     def pow(self, left: Expr, right: Expr) -> BinOp:
         return BinOp("^", left, right)
+
+
+def _stratified(
+    kind: Literal["parameter", "rate"], name: Token, by: Token, rest: tuple[Any, ...]
+) -> Stratified:
+    *values, unit = rest
+    return Stratified(
+        str(name), kind, Ref(str(by), **_at(by)), tuple(values), _unit(unit), **_at(name)
+    )
 
 
 def _unit(token: Token | None) -> str | None:

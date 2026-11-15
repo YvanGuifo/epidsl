@@ -17,11 +17,19 @@ flow: "flow" [NAME] ARROW [NAME] ":" _expr
 
 semantics: "semantics" ":" "[" NAME ("," NAME)* "]"
 
-compose: "compose" NAME "{" ((models | sync) ";"?)* "}"
+compose: "compose" NAME "{" (_compose_statement ";"?)* "}"
+
+_compose_statement: models | sync | stratified_parameter | stratified_rate | enter
 
 models: "models" ":" "[" NAME ("," NAME)* "]"
 sync: "sync" move ("," move)+ ":" _expr
 move: NAME ARROW NAME
+
+stratified_parameter: "parameter" NAME "by" NAME "=" "{" stratum ("," stratum)* "}" [UNIT]
+stratified_rate: "rate" NAME "by" NAME "=" "{" stratum ("," stratum)* "}" [UNIT]
+stratum: NAME ":" signed
+
+enter: "enter" NAME "at" NAME
 
 signed: NUMBER        -> positive
       | "-" NUMBER    -> negative
