@@ -18,6 +18,9 @@ The composition is their product, in the manner of a stochastic automata network
   a rate of one automaton that depends on the state of another.
 * **Inflows.** Newcomers of one model's inflow enter the other models in the state
   given by ``enter Model at state``.
+* **Observables.** Each model's observables are kept. A state name becomes the
+  marginal total, and an incidence counts every transition of the product in which
+  that model makes the move, synchronised transitions included.
 
 The result is a plain EpiModel, so every backend supports composition unchanged.
 """
@@ -31,6 +34,7 @@ from typing import NoReturn, Protocol
 
 from epidsl.checks import errors
 from epidsl.errors import CompositionError
+from epidsl.expr import walk
 from epidsl.ir import (
     BinOp,
     Call,
@@ -40,7 +44,9 @@ from epidsl.ir import (
     EpiModel,
     Expr,
     Flow,
+    Incidence,
     Neg,
+    Observable,
     Semantics,
     Sym,
     Sync,
@@ -102,7 +108,8 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
     semantics = _semantics(composition, parts)
 
     cells: list[Cell] = list(product(*([c.name for c in part.compartments] for part in parts)))
-    marginals = _marginals(composition, cells, len(parts), set(constants))
+    observed_names = {o.name for part in parts for o in part.observables}
+    marginals = _marginals(composition, cells, len(parts), set(constants) | observed_names)
 
     initial = {c.name: c.initial for part in parts for c in part.compartments}
     compartments = tuple(
@@ -146,12 +153,36 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
         key = _name(tuple(sync_moves[i][0] for i in sorted(sync_moves)))
         flows.extend(_lift(sync_moves, key, sync, cells, marginals, strata))
 
+    observables: list[Observable] = []
+    declared_by: dict[str, str] = {}
+    for i, part in enumerate(parts):
+        for observable in part.observables:
+            if observable.name in declared_by:
+                _fail(
+                    f"observable '{observable.name}' is declared by both "
+                    f"'{declared_by[observable.name]}' and '{part.name}'",
+                    composition.models[i],
+                )
+            declared_by[observable.name] = part.name
+            for node in walk(observable.expr):
+                if isinstance(node, Sym) and node.name in strata:
+                    _fail(
+                        f"observable '{observable.name}' uses the stratified constant "
+                        f"'{node.name}', which has no single value",
+                        composition.models[i],
+                    )
+            lifted = _lift_observable(observable.expr, i, cells, marginals)
+            observables.append(
+                Observable(observable.name, lifted, observable.line, observable.column)
+            )
+
     return EpiModel(
         name=composition.name,
         compartments=compartments,
         constants=tuple(constants.values()),
         flows=tuple(flows),
         semantics=semantics,
+        observables=tuple(observables),
         line=composition.line,
         column=composition.column,
     )
@@ -348,6 +379,41 @@ def _lift(
             )
         )
     return lifted
+
+
+def _lift_observable(
+    expr: Expr, part: int, cells: list[Cell], marginals: Mapping[str, list[str]]
+) -> Expr:
+    """Rewrite an observable of model ``part`` for the product.
+
+    State names become marginal totals. An incidence from ``a`` to ``b`` counts every
+    transition whose cell goes from state ``a`` to state ``b`` in that model.
+    """
+    match expr:
+        case Incidence(pairs, line, column):
+            lifted: list[tuple[str | None, str | None]] = []
+            for source, target in pairs:
+                sources = (
+                    [None] if source is None else [_name(c) for c in cells if c[part] == source]
+                )
+                targets = (
+                    [None] if target is None else [_name(c) for c in cells if c[part] == target]
+                )
+                lifted.extend((a, b) for a in sources for b in targets)
+            return Incidence(tuple(lifted), line, column)
+        case Neg(operand):
+            return Neg(_lift_observable(operand, part, cells, marginals))
+        case BinOp(op, left, right):
+            return BinOp(
+                op,
+                _lift_observable(left, part, cells, marginals),
+                _lift_observable(right, part, cells, marginals),
+            )
+        case Call(func, args, line, column):
+            lifted_args = tuple(_lift_observable(a, part, cells, marginals) for a in args)
+            return Call(func, lifted_args, line, column)
+        case _:
+            return _rewrite(expr, None, "", marginals, {})
 
 
 def _rewrite(

@@ -10,7 +10,7 @@ import math
 
 import numpy as np
 
-from epidsl.backends import BackendResult, compile_model
+from epidsl.backends import BackendResult, compile_model, observe
 from epidsl.backends._stochastic import (
     choose_flow,
     evaluate_propensities,
@@ -36,11 +36,14 @@ class GillespieBackend:
         require_time_independent_rates(model, "Gillespie")
 
         rng = np.random.default_rng(config.seed)
-        grid = np.linspace(config.t_start, config.t_end, config.n_points)
-        output = np.empty((config.n_points, len(compiled.names)), dtype=np.float64)
+        grid = config.grid()
+        output = np.empty((len(grid), len(compiled.names)), dtype=np.float64)
+        counter = {flow: i for i, flow in enumerate(compiled.tracked)}
+        moved = np.zeros(len(compiled.tracked), dtype=np.float64)
+        moved_output = np.empty((len(grid), len(compiled.tracked)), dtype=np.float64)
         state = compiled.initial.copy()
         propensities = np.zeros(len(compiled.flows), dtype=np.float64)
-        t = config.t_start
+        t = float(grid[0])
         recorded = 0
         events = 0
 
@@ -50,10 +53,11 @@ class GillespieBackend:
             t_next = t + rng.exponential(1.0 / total) if total > 0 else math.inf
 
             # The state is constant until the next jump: fill the grid points before it.
-            while recorded < config.n_points and grid[recorded] < t_next:
+            while recorded < len(grid) and grid[recorded] < t_next:
                 output[recorded] = state
+                moved_output[recorded] = moved
                 recorded += 1
-            if recorded == config.n_points:
+            if recorded == len(grid):
                 break
 
             if events == self.max_events:
@@ -61,7 +65,10 @@ class GillespieBackend:
                     f"Gillespie simulation of model {model.name} needs more than "
                     f"{self.max_events} events (reached t = {t:g})"
                 )
-            fired = compiled.flows[choose_flow(propensities, total, rng)]
+            chosen = choose_flow(propensities, total, rng)
+            fired = compiled.flows[chosen]
+            if chosen in counter:
+                moved[counter[chosen]] += 1
             if fired.source is not None:
                 state[fired.source] -= 1
             if fired.target is not None:
@@ -73,4 +80,5 @@ class GillespieBackend:
             t=grid,
             y={name: output[:, i].copy() for i, name in enumerate(compiled.names)},
             metadata={"backend": "Gillespie", "events": events, "seed": config.seed},
+            observed=observe(model, compiled, grid, output, moved_output),
         )

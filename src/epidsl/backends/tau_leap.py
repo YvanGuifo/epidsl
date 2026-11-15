@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
-from epidsl.backends import BackendResult, compile_model
+from epidsl.backends import BackendResult, compile_model, observe
 from epidsl.backends._stochastic import (
     choose_flow,
     evaluate_propensities,
@@ -64,18 +64,22 @@ class TauLeapBackend:
                 change[flow.target, j] += 1
 
         rng = np.random.default_rng(config.seed)
-        grid = np.linspace(config.t_start, config.t_end, config.n_points)
-        output = np.empty((config.n_points, n_compartments), dtype=np.float64)
+        grid = config.grid()
+        output = np.empty((len(grid), n_compartments), dtype=np.float64)
+        tracked = np.array(compiled.tracked, dtype=np.intp)
+        moved = np.zeros(len(tracked), dtype=np.float64)
+        moved_output = np.empty((len(grid), len(tracked)), dtype=np.float64)
         state = compiled.initial.copy()
         propensities = np.zeros(n_flows, dtype=np.float64)
-        t = config.t_start
+        t = float(grid[0])
         recorded = 0
         leaps = 0
         exact_steps = 0
 
-        while recorded < config.n_points:
+        while recorded < len(grid):
             if t >= grid[recorded]:
                 output[recorded] = state
+                moved_output[recorded] = moved
                 recorded += 1
                 continue
 
@@ -84,6 +88,7 @@ class TauLeapBackend:
             if total == 0:
                 # Nothing can happen any more: the state is final.
                 output[recorded:] = state
+                moved_output[recorded:] = moved
                 break
             if leaps + exact_steps == self.max_steps:
                 raise RuntimeError(
@@ -99,7 +104,9 @@ class TauLeapBackend:
                 if wait >= horizon:
                     t = float(grid[recorded])  # no jump before the next output time
                     continue
-                state += change[:, choose_flow(propensities, total, rng)]
+                chosen = choose_flow(propensities, total, rng)
+                state += change[:, chosen]
+                moved[tracked == chosen] += 1
                 t += wait
                 exact_steps += 1
                 continue
@@ -107,7 +114,8 @@ class TauLeapBackend:
             tau = min(tau, horizon)
             reaches_grid = tau == horizon
             for _ in range(_MAX_HALVINGS):
-                candidate = state + change @ rng.poisson(propensities * tau)
+                firings = rng.poisson(propensities * tau)
+                candidate = state + change @ firings
                 if candidate.min() >= 0:
                     break
                 tau /= 2  # the leap emptied a compartment: retry with a shorter one
@@ -118,6 +126,7 @@ class TauLeapBackend:
                     f"no step keeps every compartment non-negative at t = {t:g}"
                 )
             state = candidate
+            moved += firings[tracked]
             t = float(grid[recorded]) if reaches_grid else t + tau
             leaps += 1
 
@@ -130,6 +139,7 @@ class TauLeapBackend:
                 "exact_steps": exact_steps,
                 "seed": config.seed,
             },
+            observed=observe(model, compiled, grid, output, moved_output),
         )
 
     def _step(

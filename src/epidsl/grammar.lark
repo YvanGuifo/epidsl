@@ -5,7 +5,7 @@ start: (model | compose)+
 
 model: "model" NAME "{" (_statement ";"?)* "}"
 
-_statement: compartments | parameter | rate | flow | semantics
+_statement: compartments | parameter | rate | flow | semantics | observe
 
 compartments: "compartment" compartment ("," compartment)*
 compartment: NAME ["=" signed]
@@ -15,6 +15,8 @@ prior: "prior" NAME "(" signed "," signed ")"
 rate: "rate" NAME "=" signed [UNIT]
 
 flow: "flow" [NAME] ARROW [NAME] ":" _expr
+
+observe: "observe" NAME "=" _expr
 
 semantics: "semantics" ":" "[" NAME ("," NAME)* "]"
 
@@ -49,6 +51,7 @@ _expr: sum
 ?atom: NUMBER           -> number
     | NAME              -> symbol
     | NAME "(" [_expr ("," _expr)*] ")" -> call
+    | "incidence" "(" [NAME] ARROW [NAME] ")" -> incidence
     | "(" _expr ")"
 
 ARROW: "->"

@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterator, Mapping
 import numpy as np
 from numpy.typing import NDArray
 
-from epidsl.ir import BinOp, Call, Expr, Neg, Num, Sym
+from epidsl.ir import BinOp, Call, Expr, Incidence, Neg, Num, Sym
 
 State = NDArray[np.float64]
 Evaluator = Callable[[State, float], float]
@@ -47,11 +47,17 @@ def walk(expr: Expr) -> Iterator[Expr]:
             pass
 
 
-def compile_expr(expr: Expr, index: Mapping[str, int], constants: Mapping[str, float]) -> Evaluator:
+def compile_expr(
+    expr: Expr,
+    index: Mapping[str, int],
+    constants: Mapping[str, float],
+    incidence: Callable[[Incidence], float] | None = None,
+) -> Evaluator:
     """Turn ``expr`` into a function of (state, time).
 
-    ``index`` maps compartment names to positions in the state vector. The
-    expression is assumed to have passed the static checks.
+    ``index`` maps compartment names to positions in the state vector. ``incidence``
+    gives the current value of an incidence term; it is needed for observables only.
+    The expression is assumed to have passed the static checks.
     """
     match expr:
         case Num(value):
@@ -67,11 +73,11 @@ def compile_expr(expr: Expr, index: Mapping[str, int], constants: Mapping[str, f
             constant = constants[name]
             return lambda y, t: constant
         case Neg(operand):
-            inner = compile_expr(operand, index, constants)
+            inner = compile_expr(operand, index, constants, incidence)
             return lambda y, t: -inner(y, t)
         case BinOp(op, left, right):
-            lhs = compile_expr(left, index, constants)
-            rhs = compile_expr(right, index, constants)
+            lhs = compile_expr(left, index, constants, incidence)
+            rhs = compile_expr(right, index, constants, incidence)
             match op:
                 case "+":
                     return lambda y, t: lhs(y, t) + rhs(y, t)
@@ -83,8 +89,11 @@ def compile_expr(expr: Expr, index: Mapping[str, int], constants: Mapping[str, f
                     return lambda y, t: lhs(y, t) / rhs(y, t)
                 case "^":
                     return lambda y, t: lhs(y, t) ** rhs(y, t)
+        case Incidence() if incidence is not None:
+            lookup, node = incidence, expr
+            return lambda y, t: lookup(node)
         case Call(func, args):
             _, implementation = FUNCTIONS[func]
-            compiled = [compile_expr(arg, index, constants) for arg in args]
+            compiled = [compile_expr(arg, index, constants, incidence) for arg in args]
             return lambda y, t: float(implementation(*(arg(y, t) for arg in compiled)))
     raise TypeError(f"not an expression: {expr!r}")

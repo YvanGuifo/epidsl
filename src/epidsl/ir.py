@@ -7,11 +7,14 @@ and never take part in equality.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from itertools import pairwise
 from typing import Literal
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 def _pos() -> int:
@@ -50,7 +53,20 @@ class Call:
     column: int = _pos()
 
 
-Expr = Num | Sym | Neg | BinOp | Call
+@dataclass(frozen=True, slots=True)
+class Incidence:
+    """Number of individuals who moved along some flows since the previous output time.
+
+    ``pairs`` lists the (source, target) endpoints of the flows counted; None stands
+    for outside the population. Only meaningful in an observable.
+    """
+
+    pairs: tuple[tuple[str | None, str | None], ...]
+    line: int = _pos()
+    column: int = _pos()
+
+
+Expr = Num | Sym | Neg | BinOp | Call | Incidence
 
 
 class Semantics(Enum):
@@ -136,12 +152,23 @@ class Flow:
 
 
 @dataclass(frozen=True, slots=True)
+class Observable:
+    """A quantity derived from the state, as it would be measured (``observe``)."""
+
+    name: str
+    expr: Expr
+    line: int = _pos()
+    column: int = _pos()
+
+
+@dataclass(frozen=True, slots=True)
 class EpiModel:
     name: str
     compartments: tuple[Compartment, ...]
     constants: tuple[Constant, ...]
     flows: tuple[Flow, ...]
     semantics: tuple[Semantics, ...] = (Semantics.ODE,)
+    observables: tuple[Observable, ...] = ()
     line: int = _pos()
     column: int = _pos()
 
@@ -203,8 +230,34 @@ class Composition:
 
 @dataclass(frozen=True, slots=True)
 class SimulationConfig:
+    """When to simulate and report.
+
+    By default the output times are ``n_points`` evenly spaced from ``t_start`` to
+    ``t_end``. ``SimulationConfig.at(times)`` reports at the given times instead.
+    """
+
     t_end: float
     n_points: int = 201
     t_start: float = 0.0
     #: Seed of the random generator for stochastic backends; None draws a fresh one.
     seed: int | None = None
+    #: Explicit output times; set through ``SimulationConfig.at``.
+    times: tuple[float, ...] | None = None
+
+    @classmethod
+    def at(cls, times: Sequence[float], seed: int | None = None) -> SimulationConfig:
+        """Report at ``times``, which must increase; the simulation starts at the first."""
+        values = tuple(float(t) for t in times)
+        if len(values) < 2:
+            raise ValueError("at least two output times are needed")
+        if any(later <= earlier for earlier, later in pairwise(values)):
+            raise ValueError("output times must be increasing")
+        return cls(
+            t_end=values[-1], n_points=len(values), t_start=values[0], seed=seed, times=values
+        )
+
+    def grid(self) -> NDArray[np.float64]:
+        """The output times."""
+        if self.times is not None:
+            return np.array(self.times, dtype=np.float64)
+        return np.linspace(self.t_start, self.t_end, self.n_points)

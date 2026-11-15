@@ -31,9 +31,6 @@ from epidsl.backends import Backend, BackendResult
 from epidsl.checks import errors
 from epidsl.ir import EpiModel, Prior, SimulationConfig
 
-#: Number of output points of each simulation, before interpolation to the data times.
-_GRID_POINTS = 401
-
 
 @dataclass(frozen=True, slots=True)
 class Observations:
@@ -85,16 +82,48 @@ def with_constants(model: EpiModel, values: dict[str, float]) -> EpiModel:
     return replace(model, constants=constants)
 
 
+def simulate_at(
+    backend: Backend, model: EpiModel, times: NDArray[np.float64], seed: int | None
+) -> BackendResult:
+    """Simulate from time zero and report exactly at ``times``.
+
+    An incidence observable at the first of ``times`` counts from time zero.
+    """
+    starts_at_zero = times[0] == 0
+    grid = times if starts_at_zero else np.concatenate([[0.0], times])
+    result = backend.run(model, SimulationConfig.at(grid.tolist(), seed=seed))
+    if starts_at_zero:
+        return result
+    return BackendResult(
+        t=result.t[1:],
+        y={name: series[1:] for name, series in result.y.items()},
+        metadata=result.metadata,
+        observed={name: series[1:] for name, series in result.observed.items()},
+    )
+
+
 def distance(result: BackendResult, observations: Observations) -> float:
     """Root mean squared relative error between a simulation and the observations.
 
-    The simulation is interpolated to the observation times. Each series is divided
-    by its largest observed magnitude, so that large and small compartments count alike.
+    Each series is divided by its largest observed magnitude, so that large and small
+    quantities count alike. A compartment is interpolated to the observation times.
+    An observable is not, since an incidence depends on the spacing of the output
+    times: the simulation must then report at the observation times themselves.
     """
+    same_times = len(result.t) == len(observations.t) and np.array_equal(result.t, observations.t)
     total = 0.0
     count = 0
     for name, observed in observations.y.items():
-        simulated = np.interp(observations.t, result.t, result.y[name])
+        if name in result.y:
+            simulated = np.interp(observations.t, result.t, result.y[name])
+        elif name not in result.observed:
+            raise ValueError(f"the simulation has no compartment or observable '{name}'")
+        elif not same_times:
+            raise ValueError(
+                f"observable '{name}' can only be compared at the same times as the simulation"
+            )
+        else:
+            simulated = result.observed[name]
         scale = float(np.abs(observed).max()) or 1.0
         total += float((((simulated - observed) / scale) ** 2).sum())
         count += len(observed)
@@ -190,10 +219,12 @@ def calibrate(
             f"model {model.name} has no parameter with a prior; "
             "declare one as 'parameter p = 0.3 prior uniform(0.1, 1)'"
         )
-    compartments = {c.name for c in model.compartments}
+    known = {c.name for c in model.compartments} | {o.name for o in model.observables}
     for name in observations.y:
-        if name not in compartments:
-            raise ValueError(f"observed column '{name}' is not a compartment of model {model.name}")
+        if name not in known:
+            raise ValueError(
+                f"observed column '{name}' is not a compartment or observable of model {model.name}"
+            )
     if particles < 2:
         raise ValueError("calibration needs at least 2 particles")
     if populations < 1:
@@ -202,7 +233,6 @@ def calibrate(
     names = [k.name for k in targets]
     priors: list[Prior] = [k.prior for k in targets if k.prior is not None]
     rng = np.random.default_rng(seed)
-    t_end = float(observations.t[-1])
     simulations = 0
 
     def simulate(theta: NDArray[np.float64]) -> float:
@@ -212,16 +242,14 @@ def calibrate(
                 f"calibration of model {model.name} needs more than {max_simulations} simulations"
             )
         simulations += 1
-        config = SimulationConfig(
-            t_end=t_end, n_points=_GRID_POINTS, seed=int(rng.integers(0, 2**63))
-        )
+        run_seed = int(rng.integers(0, 2**63))
         values = {
             name: _from_internal(prior, float(u))
             for name, prior, u in zip(names, priors, theta, strict=True)
         }
         candidate = with_constants(model, values)
         try:
-            return distance(backend.run(candidate, config), observations)
+            return distance(simulate_at(backend, candidate, observations.t, run_seed), observations)
         except RuntimeError:
             return math.inf  # the simulation failed for these values: never accepted
 

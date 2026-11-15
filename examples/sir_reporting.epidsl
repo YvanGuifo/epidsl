@@ -1,0 +1,19 @@
+-- What surveillance sees: new cases per reporting period, of which only a
+-- fraction is reported. Both the transmission rate and the reporting fraction
+-- can be estimated from weekly case counts.
+
+model Reported {
+    semantics: [ODE, Gillespie, TauLeap]
+
+    compartment S = 9990, I = 10, R = 0
+
+    parameter beta = 0.3 prior uniform(0.1, 1) [1/day]
+    rate gamma = 0.1 [1/day]
+    parameter rho = 0.5 prior uniform(0.05, 1) [1]    -- fraction of infections reported
+
+    flow S -> I : beta * S * I / N
+    flow I -> R : gamma * I
+
+    observe cases = rho * incidence(S -> I)    -- reported new infections per period
+    observe prevalence = I / N
+}

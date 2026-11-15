@@ -66,9 +66,10 @@ def _check(args: argparse.Namespace) -> int:
 
 def _write_csv(result: BackendResult, stream: TextIO) -> None:
     writer = csv.writer(stream, lineterminator="\n")
-    writer.writerow(["t", *result.y])
+    columns = {**result.y, **result.observed}
+    writer.writerow(["t", *columns])
     for i, t in enumerate(result.t):
-        writer.writerow([repr(float(t)), *(repr(float(series[i])) for series in result.y.values())])
+        writer.writerow([repr(float(t)), *(repr(float(series[i])) for series in columns.values())])
 
 
 def _write_summary(ensemble: EnsembleResult, quantiles: Sequence[float], stream: TextIO) -> None:

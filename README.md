@@ -82,6 +82,47 @@ individuals are involved. Its error shrinks with its accuracy parameter `epsilon
 person SIR epidemic the mean trajectory is within about 0.6% of the population
 of the ODE solution at 0.03, and 0.2% at 0.01.
 
+## Describe what is observed
+
+Surveillance rarely sees compartments directly. It sees new cases per reporting
+period, and only some of them. An `observe` statement defines such a quantity:
+
+```
+parameter rho = 0.5 prior uniform(0.05, 1) [1]    -- fraction of infections reported
+
+observe cases = rho * incidence(S -> I)
+observe prevalence = I / N
+```
+
+`incidence(S -> I)` is the number of people who moved from `S` to `I` since the
+previous output time, so with `--points` set for weekly output it is a weekly
+count. It is zero at the first output time. `incidence(-> S)` counts arrivals and
+`incidence(I ->)` departures. When several flows share the same endpoints, they
+are counted together.
+
+Observables are written after the compartments in the output of `epidsl run`,
+are summarised by `--runs`, and can be used as columns of the data given to
+`epidsl calibrate`. In a composed model, each model's observables are kept: a
+compartment name stands for its total over the other models, and an incidence
+counts every transition in which that model makes the move.
+
+```bash
+uv run epidsl calibrate examples/sir_reporting.epidsl --data examples/sir_weekly_cases.csv --seed 1
+```
+
+```
+parameter,mean,q0.025,q0.5,q0.975
+beta,0.3038061462673391,0.252614404758703,0.3029811560539657,0.3620092080755828
+rho,0.37209780074709964,0.16092360120134233,0.35308363011578686,0.6462532658218411
+```
+
+The data are synthetic weekly counts produced with `beta = 0.3` and `rho = 0.4`.
+The reporting fraction is less sharply determined than the transmission rate;
+more `--populations` narrow both intervals.
+
+An observable is a deterministic function of the simulation. Measurement noise,
+such as the chance of each case being reported, is not modelled.
+
 ## Calibrate parameters from data
 
 Calibration estimates the parameters you are unsure of from observed counts. Give
@@ -92,7 +133,7 @@ parameter beta = 0.3 prior uniform(0.05, 1) [1/day]
 ```
 
 Put the observations in a CSV file whose first column is `t` and whose other
-columns are named after compartments. Any subset of compartments will do:
+columns are named after compartments or observables. Any subset will do:
 
 ```
 t,I
@@ -130,8 +171,9 @@ tolerance and the effective sample size. `--out` writes the full weighted sample
 The method is ABC-SMC (approximate Bayesian computation, sequential Monte Carlo):
 it repeatedly simulates the model with candidate values and keeps those whose
 simulation is closest to the data, tightening the tolerance at each of
-`--populations` rounds. It works with any `--method`. The distance is the root mean
-squared error, each series being divided by its largest observed value.
+`--populations` rounds. It works with any `--method`. Each simulation starts at
+time zero and reports exactly at the times in the data. The distance is the root
+mean squared error, each series being divided by its largest observed value.
 
 More populations or particles give a sharper estimate and take longer. A low
 effective sample size relative to `--particles` means the estimate rests on few
@@ -249,6 +291,7 @@ first.
 | `flow A -> B : expr` | Moves population from `A` to `B` at rate `expr`. |
 | `flow -> A : expr` | Inflow (for example births). |
 | `flow A -> : expr` | Outflow (for example deaths). |
+| `observe x = expr` | A quantity derived from the state, written with the output. May use `incidence(A -> B)`. |
 | `compose Name { ... }` | Declares the product of several models. |
 | `models: [A, B]` | Inside `compose`: the models to compose, two or more. |
 | `sync a -> b, c -> d : expr` | Inside `compose`: a transition that moves two or more models at once, one move per model. |
@@ -261,7 +304,7 @@ population) and `t` (time), and the functions `exp`, `log`, `sqrt`, `sin`, `cos`
 `abs`, `min`, `max`. Comments are `-- to end of line` and `/* block */`. A
 trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 `compartment`, `parameter`, `rate`, `flow`, `semantics`, `models`, `sync`, `enter`,
-`by`, `at`, `prior`) cannot be used as names.
+`by`, `at`, `prior`, `observe`, `incidence`) cannot be used as names.
 
 ### Static checks
 
@@ -276,6 +319,7 @@ trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 | C7 | warning | A compartment, rate or parameter is never used. |
 | C8 | error | A declaration reuses a reserved name (`N`, `t`, or a function name). |
 | C11 | error | A prior is ill-defined (bounds in the wrong order, non-positive `loguniform` bound or standard deviation), or the parameter's value lies outside it. |
+| C12 | error | `incidence` is used in a flow rate, or no flow has the endpoints it names. |
 
 `--strict` turns warnings into errors.
 
@@ -305,7 +349,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 2. **Done:** `compose` blocks with `sync` rules, rates that depend on another model
    (`by`) and entry states for inflows (`enter`).
 3. **Done:** Gillespie and tau-leap stochastic backends, ensembles of runs.
-4. **Done:** calibration by ABC-SMC.
+4. **Done:** calibration by ABC-SMC, observables and incidence.
 5. Network-based agent backend, language server, PyPI release.
 
 Design rationale is recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).

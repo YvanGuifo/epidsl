@@ -9,17 +9,22 @@ import numpy as np
 from numpy.typing import NDArray
 
 from epidsl.checks import errors
-from epidsl.expr import Evaluator, compile_expr
-from epidsl.ir import EpiModel, Semantics, SimulationConfig
+from epidsl.expr import Evaluator, compile_expr, walk
+from epidsl.ir import EpiModel, Incidence, Semantics, SimulationConfig
 
 
 @dataclass(frozen=True, slots=True)
 class BackendResult:
-    """Trajectories on a common time grid, keyed by compartment name."""
+    """Trajectories on a common time grid.
+
+    ``y`` holds the compartments and ``observed`` the model's observables, both
+    keyed by name.
+    """
 
     t: NDArray[np.float64]
     y: dict[str, NDArray[np.float64]]
     metadata: dict[str, object] = field(default_factory=dict)
+    observed: dict[str, NDArray[np.float64]] = field(default_factory=dict)
 
 
 class Backend(Protocol):
@@ -42,6 +47,8 @@ class CompiledModel:
     names: list[str]
     initial: NDArray[np.float64]
     flows: list[CompiledFlow]
+    #: Indices of the flows whose cumulative count the observables need.
+    tracked: list[int]
 
 
 def compile_model(model: EpiModel, semantics: Semantics) -> CompiledModel:
@@ -63,6 +70,7 @@ def compile_model(model: EpiModel, semantics: Semantics) -> CompiledModel:
     names = [c.name for c in model.compartments]
     index = {name: i for i, name in enumerate(names)}
     constants = {k.name: k.value for k in model.constants}
+    counted = {pair for node in _incidences(model) for pair in node.pairs}
     return CompiledModel(
         names=names,
         initial=np.array([c.initial for c in model.compartments], dtype=np.float64),
@@ -74,4 +82,59 @@ def compile_model(model: EpiModel, semantics: Semantics) -> CompiledModel:
             )
             for f in model.flows
         ],
+        tracked=[j for j, f in enumerate(model.flows) if (f.source, f.target) in counted],
     )
+
+
+def _incidences(model: EpiModel) -> list[Incidence]:
+    return [
+        node
+        for observable in model.observables
+        for node in walk(observable.expr)
+        if isinstance(node, Incidence)
+    ]
+
+
+def observe(
+    model: EpiModel,
+    compiled: CompiledModel,
+    t: NDArray[np.float64],
+    states: NDArray[np.float64],
+    cumulative: NDArray[np.float64],
+) -> dict[str, NDArray[np.float64]]:
+    """Evaluate the model's observables at every output time.
+
+    ``states[k]`` is the state at ``t[k]`` and ``cumulative[k, i]`` the number of
+    individuals moved so far by flow ``compiled.tracked[i]``. An incidence term is
+    the count over the interval that ends at the output time, and zero at the first.
+    """
+    if not model.observables:
+        return {}
+    moved = np.diff(cumulative, axis=0, prepend=cumulative[:1])
+    column = {flow: i for i, flow in enumerate(compiled.tracked)}
+    series: dict[Incidence, NDArray[np.float64]] = {}
+    for node in _incidences(model):
+        columns = [
+            column[j] for j, f in enumerate(model.flows) if (f.source, f.target) in node.pairs
+        ]
+        series[node] = moved[:, columns].sum(axis=1)
+
+    index = {name: i for i, name in enumerate(compiled.names)}
+    constants = {k.name: k.value for k in model.constants}
+    current: dict[Incidence, float] = {}
+    observed: dict[str, NDArray[np.float64]] = {}
+    for observable in model.observables:
+        evaluate = compile_expr(observable.expr, index, constants, current.__getitem__)
+        values = np.empty(len(t), dtype=np.float64)
+        for k in range(len(t)):
+            for node, counts in series.items():
+                current[node] = float(counts[k])
+            try:
+                values[k] = evaluate(states[k], float(t[k]))
+            except (ArithmeticError, ValueError) as error:
+                raise RuntimeError(
+                    f"observable '{observable.name}' could not be evaluated "
+                    f"at t = {t[k]:g} ({error})"
+                ) from error
+        observed[observable.name] = values
+    return observed

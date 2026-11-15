@@ -21,8 +21,10 @@ from epidsl.ir import (
     EpiModel,
     Expr,
     Flow,
+    Incidence,
     Neg,
     Num,
+    Observable,
     Prior,
     Ref,
     Semantics,
@@ -99,6 +101,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
         compartments: list[Compartment] = []
         constants: list[Constant] = []
         flows: list[Flow] = []
+        observables: list[Observable] = []
         semantics: tuple[Semantics, ...] | None = None
         for item in statements:
             if isinstance(item, list):
@@ -107,6 +110,8 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                 constants.append(item)
             elif isinstance(item, Flow):
                 flows.append(item)
+            elif isinstance(item, Observable):
+                observables.append(item)
             elif semantics is not None:
                 raise EpiSyntaxError(f"model {name} declares semantics twice", **_at(name))
             else:
@@ -117,6 +122,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             constants=tuple(constants),
             flows=tuple(flows),
             semantics=semantics or (Semantics.ODE,),
+            observables=tuple(observables),
             **_at(name),
         )
 
@@ -151,6 +157,13 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             expr,
             **_at(source or arrow),
         )
+
+    def observe(self, name: Token, expr: Expr) -> Observable:
+        return Observable(str(name), expr, **_at(name))
+
+    def incidence(self, source: Token | None, arrow: Token, target: Token | None) -> Incidence:
+        pair = (None if source is None else str(source), None if target is None else str(target))
+        return Incidence((pair,), **_at(source or arrow))
 
     def semantics(self, *names: Token) -> tuple[Semantics, ...]:
         values: list[Semantics] = []

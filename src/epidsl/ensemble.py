@@ -15,7 +15,8 @@ from epidsl.ir import EpiModel, SimulationConfig
 class EnsembleResult:
     """Trajectories of several runs on a common time grid.
 
-    ``samples[r, c, k]`` is compartment ``names[c]`` in run ``r`` at time ``t[k]``.
+    ``samples[r, c, k]`` is the compartment or observable ``names[c]`` in run ``r``
+    at time ``t[k]``; compartments come first.
     ``seeds[r]`` reproduces run ``r`` when passed to the backend directly.
     """
 
@@ -48,10 +49,11 @@ def run_ensemble(
         raise ValueError("an ensemble needs at least one run")
     seeds = [int(s) for s in np.random.SeedSequence(config.seed).generate_state(runs, np.uint64)]
     results = [backend.run(model, replace(config, seed=seed)) for seed in seeds]
-    names = list(results[0].y)
+    series = [{**result.y, **result.observed} for result in results]
+    names = list(series[0])
     return EnsembleResult(
         t=results[0].t,
         names=names,
-        samples=np.array([[result.y[name] for name in names] for result in results]),
+        samples=np.array([[run[name] for name in names] for run in series]),
         seeds=seeds,
     )

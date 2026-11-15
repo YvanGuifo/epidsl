@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.7
+**Version:** 1.8
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -276,12 +276,46 @@ caught. Two were missed at first (simulation seeds; prior density in the weights
 and tests were added for them.
 
 **Limits:**
-- No observation model: data are compared with compartment counts directly, so
-  incidence (new cases per day) or under-reporting cannot be fitted yet.
+- Observation model: addressed by D16.
 - A constant stratified with `by` cannot carry a prior.
 - The posterior is approximate: its width depends on the final tolerance, hence on
   `--populations`.
 - Simulations run one after another.
+
+### D16 — Observables and incidence (2026-11-15)
+
+**Decision:** `observe name = expr` declares a quantity computed from the state at
+each output time. `incidence(A -> B)` inside it is the number of individuals moved
+by the flows from `A` to `B` since the previous output time. Check C12 rejects
+`incidence` in a flow rate and an incidence that matches no flow.
+
+- **Backends.** The ODE backend integrates one extra variable per counted flow;
+  the jump backends count firings. Only flows that an observable needs are counted.
+- **Output times.** `SimulationConfig.at(times)` reports at arbitrary increasing
+  times. Calibration uses it to simulate exactly at the observation times, starting
+  from zero: an interval count cannot be interpolated.
+- **Composition.** Observables are lifted: a state name becomes its marginal total,
+  and an incidence counts every transition of the product in which that model makes
+  the move, synchronised transitions included.
+- **Reporting.** Under-reporting is an ordinary parameter (`rho * incidence(...)`),
+  so it can carry a prior and be estimated.
+
+**Validation:** in all three backends the incidence of `S -> I` equals the decrease
+of `S` over each interval, for regular and irregular output times; arrivals minus
+departures equal the change in population; a lifted incidence in a model with a
+`sync` rule equals the decrease of the marginal; transmission rate and reporting
+fraction are recovered together from weekly cases.
+
+**Test-suite check:** eleven of twelve deliberate faults were caught; the twelfth
+(counting every flow rather than only those needed) changes cost, not results.
+
+**Limits:**
+- No measurement noise (binomial reporting, negative-binomial overdispersion): an
+  observable is a deterministic function of the simulation.
+- No `observe` inside a `compose` block, so cases cannot yet be broken down by
+  stratum (cases among the young).
+- An observable cannot use a constant stratified with `by`.
+- Reporting delays are not expressible.
 
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
@@ -296,7 +330,7 @@ check from C9 and has no number yet.
    Next for composition: contact matrices (OQ3).
 3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Ensembles of runs (D13). Open:
    time-dependent rates in the stochastic backends.
-4. **Done:** calibration by ABC-SMC (D15).
+4. **Done:** calibration by ABC-SMC (D15), observables and incidence (D16).
 5. Network ABM backend; language server; PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM
