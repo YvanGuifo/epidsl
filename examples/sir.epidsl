@@ -1,7 +1,7 @@
 /* Classic SIR model, frequency-dependent transmission.
    R0 = beta / gamma = 3. */
 model SIR {
-    semantics: [ODE, Gillespie]
+    semantics: [ODE, Gillespie, TauLeap]
 
     compartment S = 990, I = 10, R = 0
 

@@ -14,7 +14,7 @@ def test_parses_sir_model() -> None:
     (model,) = parse(SIR)
 
     assert model.name == "SIR"
-    assert model.semantics == (Semantics.ODE, Semantics.GILLESPIE)
+    assert model.semantics == (Semantics.ODE, Semantics.GILLESPIE, Semantics.TAU_LEAP)
     assert [(c.name, c.initial) for c in model.compartments] == [
         ("S", 990.0),
         ("I", 10.0),

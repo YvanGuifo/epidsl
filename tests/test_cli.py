@@ -103,3 +103,18 @@ def test_run_gillespie_refuses_undeclared_model(capsys: pytest.CaptureFixture[st
     source = str(EXAMPLES / "sir_demography.epidsl")
     assert main(["run", source, "--t-end", "1", "--method", "gillespie"]) == 1
     assert "does not declare Gillespie semantics" in capsys.readouterr().err
+
+
+def test_run_tau_leap(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    src = tmp_path / "big.epidsl"
+    src.write_text(
+        "model Big { semantics: [TauLeap] compartment S = 99000, I = 1000, R = 0 "
+        "rate b = 0.3 [1/day] rate g = 0.1 [1/day] "
+        "flow S -> I : b * S * I / N  flow I -> R : g * I }"
+    )
+    args = ["run", str(src), "--t-end", "50", "--points", "3", "--method", "tau-leap"]
+    assert main([*args, "--seed", "7"]) == 0
+    rows = [line.split(",") for line in capsys.readouterr().out.splitlines()]
+    assert rows[0] == ["t", "S", "I", "R"]
+    assert all(sum(float(x) for x in row[1:]) == 100000.0 for row in rows[1:])
+    assert float(rows[-1][3]) > 0

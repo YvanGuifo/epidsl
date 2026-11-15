@@ -1,9 +1,9 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.3
+**Version:** 1.4
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
-**Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie backend
+**Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
 
 > References, licences and competitor claims in this document have **not yet been
 > independently verified** (see "To verify" at the end). Do not copy them into a
@@ -163,6 +163,35 @@ immigration–death process against its Poisson stationary law (mean and varianc
 **Not done:** ensembles (several runs with summary statistics) in the CLI, and any
 performance work — the loop is plain Python.
 
+### D12 — Tau-leap backend (2026-11-15)
+
+**Decision:** explicit Poisson tau-leaping with an adaptive step, falling back to
+single exact Gillespie steps when a leap would cover fewer than 10 expected events.
+
+- **Step size.** With accuracy parameter `epsilon` (default 0.03), the step is the
+  largest for which, for every compartment: the expected net change and its
+  standard deviation stay below `max(epsilon * size, 1)`, and no more than a
+  fraction `epsilon` of the compartment is expected to leave. The first two bounds
+  follow the idea of Cao, Gillespie and Petzold's step selection; the third was
+  added because without it the stationary variance of an immigration–death process
+  is overestimated (a test covers this). *The exact correspondence with the
+  published procedure has not been checked against the paper.*
+- **Negative counts.** A leap that would empty a compartment below zero is
+  discarded and retried with half the step.
+- **Output.** Steps are cut at output times, so reported states are states of the
+  simulated process, not interpolations.
+- **Time-dependent rates** are refused, as in the Gillespie backend: a rate is
+  frozen over a step, and a first version that allowed `t` overestimated a decaying
+  inflow by 5%.
+
+**Validation:** the mean of 30 trajectories converges to the ODE as `epsilon`
+shrinks (measured gap 0.6% of the population at 0.03, 0.2% at 0.01, against 0.1%
+for Gillespie); binomial law of the pure death process; Poisson stationary variance
+of the immigration–death process; small populations are simulated exactly.
+
+**Test-suite check:** seven deliberate faults (three in tau-leap, two in
+Gillespie, two in composition) were each caught by at least one test.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -174,7 +203,8 @@ check from C9 and has no number yet.
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend (SciPy LSODA), CLI.
 2. **Done:** `compose` and `sync`. Next for composition: state-dependent rates
    and inflows (see D10).
-3. **Done:** Gillespie SSA (D11). Next: tau-leap, validated against Gillespie.
+3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Open: time-dependent rates in
+   the stochastic backends, and ensembles of runs.
 4. Network ABM backend; calibration (ABC-SMC); language server; PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM

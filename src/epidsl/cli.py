@@ -12,10 +12,17 @@ from typing import TextIO
 from epidsl.backends import BackendResult
 from epidsl.backends.gillespie import GillespieBackend
 from epidsl.backends.ode import ODEBackend
+from epidsl.backends.tau_leap import TauLeapBackend
 from epidsl.checks import Severity, check
 from epidsl.errors import EpiError
 from epidsl.ir import EpiModel, SimulationConfig
 from epidsl.parser import parse
+
+_METHODS: dict[str, type[ODEBackend] | type[GillespieBackend] | type[TauLeapBackend]] = {
+    "ode": ODEBackend,
+    "gillespie": GillespieBackend,
+    "tau-leap": TauLeapBackend,
+}
 
 
 def _load(path: Path) -> tuple[EpiModel, ...] | None:
@@ -76,7 +83,7 @@ def _run(args: argparse.Namespace) -> int:
     if not _report(args.file, model, args.strict):
         return 1
     try:
-        backend = GillespieBackend() if args.method == "gillespie" else ODEBackend()
+        backend = _METHODS[args.method]()
         config = SimulationConfig(t_end=args.t_end, n_points=args.points, seed=args.seed)
         result = backend.run(model, config)
     except (ValueError, RuntimeError) as error:
@@ -113,7 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_cmd.add_argument("--points", type=_points, default=201, help="number of output points")
     run_cmd.add_argument(
         "--method",
-        choices=["ode", "gillespie"],
+        choices=list(_METHODS),
         default="ode",
         help="simulation method (default: ode)",
     )

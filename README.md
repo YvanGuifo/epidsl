@@ -4,8 +4,8 @@ A domain-specific language for epidemiological modelling. A model is written onc
 compartments and flows, checked statically, and compiled to a typed intermediate
 representation that simulation backends consume.
 
-**Status:** early development. Deterministic (ODE) and exact stochastic (Gillespie)
-simulation and model composition work end to end (see [Roadmap](#roadmap)).
+**Status:** early development. Deterministic (ODE) and stochastic (Gillespie,
+tau-leap) simulation and model composition work end to end (see [Roadmap](#roadmap)).
 
 ## Install
 
@@ -46,8 +46,13 @@ compartment. Without `--out` the CSV goes to standard output.
 
 ## Run a stochastic simulation
 
-`--method gillespie` simulates one random trajectory in which individuals move one
-at a time. The model must list `Gillespie` in its `semantics`.
+Two methods simulate one random trajectory of whole individuals. The model must
+list the method in its `semantics` (`Gillespie` or `TauLeap`).
+
+| Method | What it does | Use it when |
+|--------|--------------|-------------|
+| `--method gillespie` | Exact: fires one individual event at a time. | The population is small, or you need the exact law. |
+| `--method tau-leap` | Approximate: fires many events per time step. | The population is large and exact simulation is too slow. |
 
 ```bash
 uv run epidsl run examples/sir.epidsl --t-end 160 --method gillespie --seed 1
@@ -56,9 +61,15 @@ uv run epidsl run examples/sir.epidsl --t-end 160 --method gillespie --seed 1
 `--seed` makes the run reproducible; without it each run differs. To estimate a
 mean or a spread, run several seeds and combine the CSV files.
 
-The Gillespie method requires whole-number initial values and rates that do not
-use `t`. A flow never fires from an empty compartment, and a rate that evaluates
-to a negative number stops the run with an error.
+Both methods require whole-number initial values and rates that do not use `t`. A
+flow never fires from an empty compartment, and a rate that evaluates to a negative
+number stops the run with an error.
+
+Tau-leap chooses its own step sizes, and switches to exact steps while few
+individuals are involved. Its error shrinks with its accuracy parameter `epsilon`
+(default 0.03, set from Python with `TauLeapBackend(epsilon=...)`): on a 100 000
+person SIR epidemic the mean trajectory is within about 0.6% of the population
+of the ODE solution at 0.03, and 0.2% at 0.01.
 
 ## Compose models
 
@@ -163,7 +174,7 @@ trailing `;` after a statement is optional.
 | Command | Options |
 |---------|---------|
 | `epidsl check FILE` | `--strict` |
-| `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie` (default `ode`), `--seed N`, `--model NAME`, `--out PATH`, `--strict` |
+| `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--model NAME`, `--out PATH`, `--strict` |
 
 Both commands exit with status 0 on success and 1 on any error.
 
@@ -181,7 +192,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend, CLI.
 2. **Done:** `compose` blocks with `sync` rules (stochastic automata network composition).
-3. **Done:** Gillespie stochastic backend. Next: tau-leap.
+3. **Done:** Gillespie and tau-leap stochastic backends.
 4. Network-based agent backend, calibration, language server, PyPI release.
 
 Design rationale is recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).

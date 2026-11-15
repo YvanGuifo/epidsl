@@ -11,8 +11,13 @@ import math
 import numpy as np
 
 from epidsl.backends import BackendResult, compile_model
-from epidsl.expr import walk
-from epidsl.ir import EpiModel, Semantics, SimulationConfig, Sym
+from epidsl.backends._stochastic import (
+    choose_flow,
+    evaluate_propensities,
+    require_time_independent_rates,
+    require_whole_initial_values,
+)
+from epidsl.ir import EpiModel, Semantics, SimulationConfig
 
 
 class GillespieBackend:
@@ -27,19 +32,8 @@ class GillespieBackend:
 
     def run(self, model: EpiModel, config: SimulationConfig) -> BackendResult:
         compiled = compile_model(model, Semantics.GILLESPIE)
-        for compartment in model.compartments:
-            if compartment.initial != math.floor(compartment.initial):
-                raise ValueError(
-                    f"model {model.name}: initial value of '{compartment.name}' "
-                    f"({compartment.initial:g}) must be a whole number for Gillespie semantics"
-                )
-        for declared in model.flows:
-            if any(isinstance(node, Sym) and node.name == "t" for node in walk(declared.expr)):
-                # The direct method assumes rates are constant between two jumps.
-                raise ValueError(
-                    f"model {model.name}: time-dependent rates are not supported "
-                    "by the Gillespie backend"
-                )
+        require_whole_initial_values(model, "Gillespie")
+        require_time_independent_rates(model, "Gillespie")
 
         rng = np.random.default_rng(config.seed)
         grid = np.linspace(config.t_start, config.t_end, config.n_points)
@@ -51,25 +45,7 @@ class GillespieBackend:
         events = 0
 
         while True:
-            for i, flow in enumerate(compiled.flows):
-                if flow.source is not None and state[flow.source] <= 0:
-                    # Nobody left to move, whatever the expression evaluates to.
-                    propensities[i] = 0.0
-                    continue
-                try:
-                    value = flow.rate(state, t)
-                except (ArithmeticError, ValueError) as error:
-                    raise RuntimeError(
-                        f"Gillespie simulation failed for model {model.name}: "
-                        f"a flow rate could not be evaluated ({error})"
-                    ) from error
-                if not value >= 0:
-                    raise RuntimeError(
-                        f"Gillespie simulation failed for model {model.name}: "
-                        f"a flow rate is negative or undefined ({value:g}) at t = {t:g}"
-                    )
-                propensities[i] = value
-
+            evaluate_propensities(compiled, state, t, propensities, model.name, "Gillespie")
             total = float(propensities.sum())
             t_next = t + rng.exponential(1.0 / total) if total > 0 else math.inf
 
@@ -85,12 +61,7 @@ class GillespieBackend:
                     f"Gillespie simulation of model {model.name} needs more than "
                     f"{self.max_events} events (reached t = {t:g})"
                 )
-            threshold = rng.random() * total
-            chosen = int(np.searchsorted(np.cumsum(propensities), threshold, side="right"))
-            chosen = min(chosen, len(compiled.flows) - 1)
-            while propensities[chosen] == 0.0:  # guard against rounding at the upper end
-                chosen -= 1
-            fired = compiled.flows[chosen]
+            fired = compiled.flows[choose_flow(propensities, total, rng)]
             if fired.source is not None:
                 state[fired.source] -= 1
             if fired.target is not None:
