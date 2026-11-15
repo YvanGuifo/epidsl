@@ -1,13 +1,13 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.10
+**Version:** 1.11
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
 
-> References, licences and competitor claims in this document have **not yet been
-> independently verified** (see "To verify" at the end). Do not copy them into a
-> paper or grant proposal before that is done.
+> The references were checked against their registries on 2026-11-15; three
+> identifiers from version 1.0 were wrong (see "References" at the end). Use
+> [references.bib](references.bib), not the BibTeX of version 1.0.
 
 ---
 
@@ -17,8 +17,8 @@ EpiDSL is a standalone domain-specific language for epidemiological modelling th
 compiles to a typed Python intermediate representation and targets multiple
 simulation backends (ODE, Gillespie SSA, tau-leap, ABM). Its intended scientific
 differentiator is a **SAN composition algebra** (Stochastic Automata Networks)
-inherited from Kendrick (Bui et al. 2019), enabling formally composable multi-model
-assemblies.
+inherited from Kendrick (Bui et al. 2019, BMC Bioinformatics), enabling formally
+composable multi-model assemblies.
 
 ---
 
@@ -135,8 +135,16 @@ into an ordinary model before any backend sees it.
 
 **Limits, to revisit:**
 - Inflows and state-dependent rates: addressed by D14.
-- Whether this reading matches Kendrick's composition operator has not been
-  checked against the paper.
+- **Relation to Kendrick, checked on 2026-11-15 against Bui et al. 2019.** The paper
+  defines concerns as stochastic automata combined by a tensor sum, following
+  stochastic automata networks (Plateau and Stewart). It names two ways automata
+  interact: *functional rates* (a rate depends on the state of other automata) and
+  *triggered transitions* (a transition in one automaton forces one in others), and
+  states that Kendrick supports the first and did not need the second. In EpiDSL,
+  the product is the tensor sum, `by` (D14) gives functional rates, and `sync` is a
+  synchronised transition, which Kendrick does not provide. Only the passages on
+  the mathematical model were read; the correspondence of the rate rule itself
+  (source name as cell, other names as marginals) was not checked.
 
 ### D11 — Gillespie backend (2026-11-15)
 
@@ -397,24 +405,47 @@ pre-proposal; optional carbon tracking of simulation runs.
 
 ---
 
-## To verify
+## References
 
-Carried over from version 1.0 of this document and still unchecked:
+Checked on 2026-11-15 by resolving each identifier at doi.org, Crossref, arXiv,
+Europe PMC or jmlr.org. Entries are in [references.bib](references.bib).
 
-- **Kendrick:** Bui et al. 2019, *Journal of Computational Science*,
-  DOI 10.1016/j.jocs.2019.03.006 — confirm title, authors and that the paper
-  supports the SAN composition claim.
-- **Lingua Franca:** Lohstroh et al. 2021 — venue (EMSOFT proceedings or ACM TECS)
-  and DOI (10.1145/3477022 was cited).
-- **DSL-Bench:** cited as Zhou et al., arXiv:2502.11168.
-- **Bayesian calibration for SIS:** cited as Duong 2026, arXiv:2611.14468.
-- **Competitor table** (Starsim, Lingua Franca, AlgebraicJulia / Catalyst.jl,
-  Epydemix, EMULSION, EpiAgent): paradigm, composition, calibration method and
-  licence of each. In particular, Catalyst.jl and AlgebraicJulia are separate
-  projects, and the existence of an ABM tool named EpiAgent is unconfirmed.
-- Gillespie 1977 (DOI 10.1021/j100540a008), Gillespie 2001
-  (DOI 10.1063/1.1378322), Toni et al. 2009 (DOI 10.1098/rsif.2008.0172),
-  Henderson et al. 2020 (JMLR 21:248).
+### Corrections to version 1.0
+
+| Cited in version 1.0 | Finding | Correct reference |
+|---|---|---|
+| Kendrick: *Journal of Computational Science* 36, 101001 (2019), DOI 10.1016/j.jocs.2019.03.006 | The DOI does not exist (Crossref 404). No such article was found. | Bui et al. 2019, *BMC Bioinformatics* 20:312, DOI 10.1186/s12859-019-2843-0. The title cited in 1.0 is that of the RIVF 2015 paper, DOI 10.1109/RIVF.2015.7049888. |
+| Lingua Franca: EMSOFT 2021, DOI 10.1145/3477022, "Towards a…" | The DOI does not exist. | Lohstroh, Menard, Bateni, Lee 2021, *ACM Transactions on Embedded Computing Systems* 20(4), DOI 10.1145/3448128, "Toward a…". |
+| DSL-Bench: arXiv:2502.11168 | That identifier is an unrelated computer-vision paper (spatio-temporal video grounding). | Zhou, Ye, Gao, Wei, Zheng 2026, arXiv:2611.05168. Per its abstract: code generation on 18 DSLs with 7 LLMs. The task types and venue stated in 1.0 are not confirmed. |
+
+### Confirmed
+
+- Gillespie 1977 (DOI 10.1021/j100540a008) and Gillespie 2001 (DOI 10.1063/1.1378322).
+- Toni et al. 2009 (DOI 10.1098/rsif.2008.0172); published online in 2008.
+- Duong 2026, arXiv:2611.14468. Its subject is Bayesian inference for a heterogeneous
+  SIS reaction–diffusion model; "probabilistic programming", stated in 1.0, does not
+  appear in the part of the abstract that was read.
+- Henderson et al. 2020: title confirmed on jmlr.org; volume and pages not re-checked.
+- Page et al. 2021 (DOI 10.1136/bmj.n160) exists but is cited nowhere in this project.
+- Added: Cao, Gillespie, Petzold 2006 (DOI 10.1063/1.2159468) and Beaumont et al.
+  2009 (DOI 10.1093/biomet/asp052), which D12 and D15 refer to. **Their existence is
+  confirmed; that the code follows their procedures is still unchecked.**
+
+### Other tools
+
+Licence and description as published by each project (GitHub, PyPI), 2026-11-15.
+The feature comparison of version 1.0 (composition, stochastic methods, calibration)
+was not re-checked and is not reproduced here.
+
+| Tool | What it is | Licence | Version 1.0 said |
+|---|---|---|---|
+| Starsim | Agent-based disease modelling framework (Python) | MIT | MIT |
+| Lingua Franca | Concurrent programming language with code generation | BSD 2-Clause | BSD-2 |
+| Catalyst.jl | Chemical reaction network modelling (Julia). A SciML project, not AlgebraicJulia. | MIT | MIT |
+| AlgebraicPetri.jl | Compositional Petri net models (Julia), AlgebraicJulia | MIT | grouped with Catalyst.jl |
+| Epydemix | Epidemic modelling, simulation and calibration (Python) | GPL-3.0 | Apache-2 — wrong |
+| EMULSION | Epidemiological multi-level simulation framework (Python) | Apache-2.0 | LGPL — wrong |
+| EpiAgent | On PyPI, a foundation model for single-cell epigenomic data, not an epidemic simulator | MIT | listed as an agent-based epidemic tool — no such tool was found |
 
 ---
 
