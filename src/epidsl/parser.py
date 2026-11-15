@@ -23,6 +23,7 @@ from epidsl.ir import (
     Flow,
     Neg,
     Num,
+    Prior,
     Ref,
     Semantics,
     Stratified,
@@ -125,11 +126,23 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
     def compartment(self, name: Token, initial: float | None) -> Compartment:
         return Compartment(str(name), 0.0 if initial is None else initial, **_at(name))
 
-    def parameter(self, name: Token, value: float, unit: Token | None) -> Constant:
-        return Constant(str(name), "parameter", value, _unit(unit), **_at(name))
+    def parameter(
+        self, name: Token, value: float, prior: Prior | None, unit: Token | None
+    ) -> Constant:
+        return Constant(
+            str(name), "parameter", value, _unit(unit), name.line or 0, name.column or 0, prior
+        )
+
+    def prior(self, dist: Token, a: float, b: float) -> Prior:
+        if dist not in ("uniform", "loguniform", "normal"):
+            raise EpiSyntaxError(
+                f"unknown distribution '{dist}' (expected uniform, loguniform or normal)",
+                **_at(dist),
+            )
+        return Prior(str(dist), a, b)  # type: ignore[arg-type]
 
     def rate(self, name: Token, value: float, unit: Token | None) -> Constant:
-        return Constant(str(name), "rate", value, _unit(unit), **_at(name))
+        return Constant(str(name), "rate", value, _unit(unit), name.line or 0, name.column or 0)
 
     def flow(self, source: Token | None, arrow: Token, target: Token | None, expr: Expr) -> Flow:
         return Flow(

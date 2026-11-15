@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.6
+**Version:** 1.7
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -238,6 +238,51 @@ reproduce the uncomposed model and the young population reaches
 - Restricting a transition to some strata (admitting only infected people to
   hospital) still has no syntax; a stratified rate set to zero is the workaround.
 
+### D15 — Calibration (2026-11-15)
+
+**Decision:** `parameter p = v prior dist(a, b)` attaches a prior (`uniform`,
+`loguniform`, `normal`); `epidsl calibrate FILE --data CSV` estimates every such
+parameter by ABC-SMC. Check C11 rejects an ill-defined prior or a value outside it.
+
+- **Why ABC:** it needs only simulations, so one implementation serves the ODE,
+  Gillespie and tau-leap backends.
+- **Distance:** root mean squared error after interpolating the simulation to the
+  observation times, each series divided by its largest observed magnitude.
+- **Tolerances:** adaptive — each is the median distance of the previous population.
+- **Perturbation and weights:** Gaussian perturbation with twice the weighted
+  variance of the current population, and importance weights
+  `prior / sum(weights * kernel)`. *Written from memory of Toni et al. 2009 and
+  Beaumont et al. 2009; not checked against the papers.*
+- **Scale:** a `loguniform` parameter is sampled, perturbed and weighted on a
+  logarithmic scale.
+
+**Findings while building it:**
+- With a `loguniform` prior over four orders of magnitude and a linear-scale
+  perturbation, the effective sample size fell from 3000 to under 200. The
+  logarithmic scale fixed it (now above 80%), and a test guards it.
+- An ODE solver's rounding error depends on the parameters. With data that carry no
+  information, the adaptive tolerance selected on that noise and the posterior
+  drifted. This is a property of ABC with a deterministic simulator and uninformative
+  data, not a defect of the weights; it is why the weight tests use a simulator
+  whose output is exactly constant.
+
+**Validation:** recovery of one parameter from noisy data and of two parameters at
+once (95% interval contains the truth, mean within 5% and 10%); the prior is
+restored when the data say nothing (uniform-in-log and normal priors); particles
+stay within the prior; a stochastic backend; reproducibility with a seed.
+
+**Test-suite check:** thirteen deliberate faults in the calibration code were each
+caught. Two were missed at first (simulation seeds; prior density in the weights)
+and tests were added for them.
+
+**Limits:**
+- No observation model: data are compared with compartment counts directly, so
+  incidence (new cases per day) or under-reporting cannot be fitted yet.
+- A constant stratified with `by` cannot carry a prior.
+- The posterior is approximate: its width depends on the final tolerance, hence on
+  `--populations`.
+- Simulations run one after another.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -251,7 +296,8 @@ check from C9 and has no number yet.
    Next for composition: contact matrices (OQ3).
 3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Ensembles of runs (D13). Open:
    time-dependent rates in the stochastic backends.
-4. Network ABM backend; calibration (ABC-SMC); language server; PyPI release.
+4. **Done:** calibration by ABC-SMC (D15).
+5. Network ABM backend; language server; PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM
 code-generation benchmark task suite for EpiDSL; a Bayesian calibration backend

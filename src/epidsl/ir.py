@@ -6,9 +6,12 @@ and never take part in equality.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
+
+import numpy as np
 
 
 def _pos() -> int:
@@ -66,6 +69,49 @@ class Compartment:
 
 
 @dataclass(frozen=True, slots=True)
+class Prior:
+    """Prior distribution of a parameter, used by calibration.
+
+    ``uniform(a, b)`` and ``loguniform(a, b)`` take bounds; ``normal(a, b)`` takes a
+    mean and a standard deviation.
+    """
+
+    dist: Literal["uniform", "loguniform", "normal"]
+    a: float
+    b: float
+
+    def problem(self) -> str | None:
+        """Why the distribution is not well defined, or None if it is."""
+        if self.dist == "normal":
+            return None if self.b > 0 else "standard deviation must be positive"
+        if self.dist == "loguniform" and self.a <= 0:
+            return "bounds must be positive"
+        return None if self.a < self.b else "lower bound must be below the upper bound"
+
+    def pdf(self, x: float) -> float:
+        """Probability density at ``x``."""
+        match self.dist:
+            case "uniform":
+                return 1.0 / (self.b - self.a) if self.a <= x <= self.b else 0.0
+            case "loguniform":
+                inside = self.a <= x <= self.b
+                return 1.0 / (x * math.log(self.b / self.a)) if inside else 0.0
+            case "normal":
+                z = (x - self.a) / self.b
+                return math.exp(-0.5 * z * z) / (self.b * math.sqrt(2.0 * math.pi))
+
+    def sample(self, rng: np.random.Generator) -> float:
+        """Draw one value."""
+        match self.dist:
+            case "uniform":
+                return float(rng.uniform(self.a, self.b))
+            case "loguniform":
+                return float(math.exp(rng.uniform(math.log(self.a), math.log(self.b))))
+            case "normal":
+                return float(rng.normal(self.a, self.b))
+
+
+@dataclass(frozen=True, slots=True)
 class Constant:
     """A named constant. ``parameter`` marks it as calibratable; ``rate`` is fixed."""
 
@@ -75,6 +121,7 @@ class Constant:
     unit: str | None = None
     line: int = _pos()
     column: int = _pos()
+    prior: Prior | None = None
 
 
 @dataclass(frozen=True, slots=True)

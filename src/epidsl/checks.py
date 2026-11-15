@@ -1,4 +1,4 @@
-"""Static checks C1-C8 on a parsed model.
+"""Static checks on a parsed model.
 
 C1  duplicate declaration                      error
 C2  flow endpoint is not a compartment         error
@@ -8,6 +8,9 @@ C5  rate or parameter without a unit           warning
 C6  negative or non-finite declared value      error
 C7  unused compartment, rate or parameter      warning
 C8  declaration shadows a reserved name        error
+C11 ill-defined prior, or value outside it     error
+
+(C9 and C10 are reserved for mass conservation and undeclared semantics.)
 """
 
 from __future__ import annotations
@@ -72,6 +75,16 @@ def check(model: EpiModel) -> list[Diagnostic]:
             error("C6", f"value of '{constant.name}' must be finite", constant)
         if constant.unit is None:
             warning("C5", f"{constant.kind} '{constant.name}' has no unit", constant)
+        if constant.prior is not None:
+            problem = constant.prior.problem()
+            if problem is not None:
+                error("C11", f"prior of '{constant.name}': {problem}", constant)
+            elif constant.prior.pdf(constant.value) == 0.0:
+                error(
+                    "C11",
+                    f"prior of '{constant.name}': value {constant.value:g} lies outside its prior",
+                    constant,
+                )
 
     used: set[str] = set()
     for flow in model.flows:

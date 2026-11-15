@@ -1,4 +1,4 @@
-"""Command-line interface: ``epidsl check`` and ``epidsl run``."""
+"""Command-line interface: ``epidsl check``, ``epidsl run`` and ``epidsl calibrate``."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from epidsl.backends import Backend, BackendResult
 from epidsl.backends.gillespie import GillespieBackend
 from epidsl.backends.ode import ODEBackend
 from epidsl.backends.tau_leap import TauLeapBackend
+from epidsl.calibration import CalibrationResult, calibrate, read_observations
 from epidsl.checks import Severity, check
 from epidsl.ensemble import EnsembleResult, run_ensemble
 from epidsl.errors import EpiError
@@ -85,24 +86,79 @@ def _write_summary(ensemble: EnsembleResult, quantiles: Sequence[float], stream:
         writer.writerow([repr(float(t)), *(repr(values[i]) for _, values in columns)])
 
 
-def _run(args: argparse.Namespace) -> int:
+def _select(args: argparse.Namespace) -> EpiModel | None:
+    """Load the file and pick the model to work on, reporting any problem."""
     models = _load(args.file)
     if models is None:
-        return 1
+        return None
     if args.model is not None:
         selected = [m for m in models if m.name == args.model]
         if not selected:
             print(f"{args.file}: no model named '{args.model}'", file=sys.stderr)
-            return 1
+            return None
         model = selected[0]
     elif len(models) == 1:
         model = models[0]
     else:
         names = ", ".join(m.name for m in models)
         print(f"{args.file}: several models ({names}); choose one with --model", file=sys.stderr)
+        return None
+    return model if _report(args.file, model, args.strict) else None
+
+
+def _write_posterior(result: CalibrationResult, stream: TextIO) -> None:
+    """One row per parameter: posterior mean, 2.5%, 50% and 97.5% quantiles."""
+    mean = result.mean()
+    low, median, high = (result.quantile(q) for q in (0.025, 0.5, 0.975))
+    writer = csv.writer(stream, lineterminator="\n")
+    writer.writerow(["parameter", "mean", "q0.025", "q0.5", "q0.975"])
+    for name in result.names:
+        writer.writerow([name, *(repr(table[name]) for table in (mean, low, median, high))])
+
+
+def _calibrate(args: argparse.Namespace) -> int:
+    model = _select(args)
+    if model is None:
+        return 1
+    try:
+        observations = read_observations(args.data)
+    except OSError as error:
+        print(f"{args.data}: {error.strerror}", file=sys.stderr)
+        return 1
+    except ValueError as error:
+        print(f"{args.data}: {error}", file=sys.stderr)
+        return 1
+    try:
+        result = calibrate(
+            _backend(args.method, None),
+            model,
+            observations,
+            particles=args.particles,
+            populations=args.populations,
+            seed=args.seed,
+        )
+    except (ValueError, RuntimeError) as error:
+        print(f"{args.file}: {error}", file=sys.stderr)
         return 1
 
-    if not _report(args.file, model, args.strict):
+    _write_posterior(result, sys.stdout)
+    print(
+        f"{result.simulations} simulations; final tolerance {result.tolerances[-1]:.4g}; "
+        f"effective sample size {result.effective_sample_size:.0f} of {len(result.weights)}",
+        file=sys.stderr,
+    )
+    if args.out is not None:
+        with args.out.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(["weight", *result.names])
+            for weight, particle in zip(result.weights, result.particles, strict=True):
+                writer.writerow([repr(float(weight)), *(repr(float(x)) for x in particle)])
+    return 0
+
+
+def _run(args: argparse.Namespace) -> int:
+    model = _select(args)
+    if model is None:
         return 1
     try:
         backend = _backend(args.method, args.epsilon)
@@ -195,6 +251,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_cmd.add_argument("--out", type=Path, help="CSV file to write (default: standard output)")
     run_cmd.add_argument("--strict", action="store_true", help="treat warnings as errors")
     run_cmd.set_defaults(handler=_run)
+
+    cal_cmd = commands.add_parser(
+        "calibrate", help="estimate the parameters that have a prior from observed data"
+    )
+    cal_cmd.add_argument("file", type=Path)
+    cal_cmd.add_argument(
+        "--data", type=Path, required=True, help="CSV of observations: column t, then compartments"
+    )
+    cal_cmd.add_argument(
+        "--method", choices=list(_METHODS), default="ode", help="simulation method (default: ode)"
+    )
+    cal_cmd.add_argument(
+        "--particles", type=int, default=200, help="size of each population (default: 200)"
+    )
+    cal_cmd.add_argument(
+        "--populations", type=int, default=5, help="number of populations (default: 5)"
+    )
+    cal_cmd.add_argument("--seed", type=int, help="random seed, for a reproducible result")
+    cal_cmd.add_argument("--model", help="model to calibrate when the file declares several")
+    cal_cmd.add_argument("--out", type=Path, help="CSV file for the weighted posterior sample")
+    cal_cmd.add_argument("--strict", action="store_true", help="treat warnings as errors")
+    cal_cmd.set_defaults(handler=_calibrate)
 
     args = parser.parse_args(argv)
     handler = args.handler

@@ -10,7 +10,8 @@ _statement: compartments | parameter | rate | flow | semantics
 compartments: "compartment" compartment ("," compartment)*
 compartment: NAME ["=" signed]
 
-parameter: "parameter" NAME "=" signed [UNIT]
+parameter: "parameter" NAME "=" signed [prior] [UNIT]
+prior: "prior" NAME "(" signed "," signed ")"
 rate: "rate" NAME "=" signed [UNIT]
 
 flow: "flow" [NAME] ARROW [NAME] ":" _expr

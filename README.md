@@ -5,7 +5,8 @@ compartments and flows, checked statically, and compiled to a typed intermediate
 representation that simulation backends consume.
 
 **Status:** early development. Deterministic (ODE) and stochastic (Gillespie,
-tau-leap) simulation and model composition work end to end (see [Roadmap](#roadmap)).
+tau-leap) simulation, model composition and calibration work end to end (see
+[Roadmap](#roadmap)).
 
 ## Install
 
@@ -80,6 +81,61 @@ individuals are involved. Its error shrinks with its accuracy parameter `epsilon
 (default 0.03, set with `--epsilon`): on a 100 000
 person SIR epidemic the mean trajectory is within about 0.6% of the population
 of the ODE solution at 0.03, and 0.2% at 0.01.
+
+## Calibrate parameters from data
+
+Calibration estimates the parameters you are unsure of from observed counts. Give
+each such parameter a prior, the range of values you consider plausible:
+
+```
+parameter beta = 0.3 prior uniform(0.05, 1) [1/day]
+```
+
+Put the observations in a CSV file whose first column is `t` and whose other
+columns are named after compartments. Any subset of compartments will do:
+
+```
+t,I
+0,10
+10,69
+20,200
+```
+
+Then run:
+
+```bash
+uv run epidsl calibrate examples/sir.epidsl --data examples/sir_observed.csv --seed 1
+```
+
+The output has one row per parameter, with its estimated mean and the 2.5%, 50%
+and 97.5% quantiles of its plausible values given the data:
+
+```
+parameter,mean,q0.025,q0.5,q0.975
+beta,0.2866752974896084,0.264269375017657,0.28701743058810203,0.31155539756701467
+```
+
+The example data are synthetic: the model was run with `beta = 0.3` and noise was
+added, so the estimate can be compared with the value that produced them.
+
+A summary line on standard error reports the number of simulations, the final
+tolerance and the effective sample size. `--out` writes the full weighted sample.
+
+| Prior | Meaning |
+|-------|---------|
+| `uniform(a, b)` | Any value between `a` and `b`, equally likely. |
+| `loguniform(a, b)` | Between `a` and `b`, with each order of magnitude equally likely. Both must be positive. |
+| `normal(m, s)` | Centred on `m` with standard deviation `s`. |
+
+The method is ABC-SMC (approximate Bayesian computation, sequential Monte Carlo):
+it repeatedly simulates the model with candidate values and keeps those whose
+simulation is closest to the data, tightening the tolerance at each of
+`--populations` rounds. It works with any `--method`. The distance is the root mean
+squared error, each series being divided by its largest observed value.
+
+More populations or particles give a sharper estimate and take longer. A low
+effective sample size relative to `--particles` means the estimate rests on few
+particles: increase `--particles`.
 
 ## Compose models
 
@@ -188,6 +244,7 @@ first.
 | `model Name { ... }` | Declares a model. A file may hold several. |
 | `compartment A = 10, B` | Declares compartments with initial values (default 0). |
 | `parameter p = 0.3 [1/day]` | A named constant intended for calibration. The unit is optional. |
+| `parameter p = 0.3 prior uniform(0.1, 1) [1/day]` | The same, with the prior that `epidsl calibrate` uses. |
 | `rate g = 0.1 [1/day]` | A fixed named constant. The unit is optional. |
 | `flow A -> B : expr` | Moves population from `A` to `B` at rate `expr`. |
 | `flow -> A : expr` | Inflow (for example births). |
@@ -204,7 +261,7 @@ population) and `t` (time), and the functions `exp`, `log`, `sqrt`, `sin`, `cos`
 `abs`, `min`, `max`. Comments are `-- to end of line` and `/* block */`. A
 trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 `compartment`, `parameter`, `rate`, `flow`, `semantics`, `models`, `sync`, `enter`,
-`by`, `at`) cannot be used as names.
+`by`, `at`, `prior`) cannot be used as names.
 
 ### Static checks
 
@@ -218,6 +275,7 @@ trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 | C6 | error | An initial value is negative, or a declared value is not finite. |
 | C7 | warning | A compartment, rate or parameter is never used. |
 | C8 | error | A declaration reuses a reserved name (`N`, `t`, or a function name). |
+| C11 | error | A prior is ill-defined (bounds in the wrong order, non-positive `loguniform` bound or standard deviation), or the parameter's value lies outside it. |
 
 `--strict` turns warnings into errors.
 
@@ -226,9 +284,10 @@ trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 | Command | Options |
 |---------|---------|
 | `epidsl check FILE` | `--strict` |
+| `epidsl calibrate FILE` | `--data CSV` (required), `--method ode\|gillespie\|tau-leap` (default `ode`), `--particles N` (default 200), `--populations N` (default 5), `--seed N`, `--model NAME`, `--out PATH`, `--strict` |
 | `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--runs K`, `--quantiles Q1,Q2,...` (default `0.025,0.975`), `--epsilon E` (tau-leap only, default 0.03), `--model NAME`, `--out PATH`, `--strict` |
 
-Both commands exit with status 0 on success and 1 on any error.
+All commands exit with status 0 on success and 1 on any error.
 
 ## Develop
 
@@ -246,7 +305,8 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 2. **Done:** `compose` blocks with `sync` rules, rates that depend on another model
    (`by`) and entry states for inflows (`enter`).
 3. **Done:** Gillespie and tau-leap stochastic backends, ensembles of runs.
-4. Network-based agent backend, calibration, language server, PyPI release.
+4. **Done:** calibration by ABC-SMC.
+5. Network-based agent backend, language server, PyPI release.
 
 Design rationale is recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).
 
