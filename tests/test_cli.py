@@ -60,3 +60,28 @@ def test_run_selects_model_by_name(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "--model" in capsys.readouterr().err
     assert main(["run", str(src), "--t-end", "1", "--model", "B", "--points", "2"]) == 0
     assert capsys.readouterr().out.splitlines()[0] == "t,Y"
+
+
+def test_composed_model_is_checked_and_run(capsys: pytest.CaptureFixture[str]) -> None:
+    source = str(EXAMPLES / "sir_age.epidsl")
+    assert main(["check", source]) == 0
+    assert capsys.readouterr().out.splitlines() == ["SIR: ok", "Age: ok", "AgeSIR: ok"]
+
+    assert main(["run", source, "--model", "AgeSIR", "--t-end", "10", "--points", "2"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "t,S_young,S_old,I_young,I_old,R_young,R_old"
+    assert lines[1] == "0.0,297.0,693.0,3.0,7.0,0.0,0.0"
+
+
+def test_composition_error_is_reported(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    src = tmp_path / "c.epidsl"
+    src.write_text(
+        "model A { compartment a = 1, b  flow a -> b : a }\ncompose X { models: [A, B] }"
+    )
+    assert main(["check", str(src)]) == 1
+    assert f"{src}:2:25: composition error: unknown model 'B'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("example", sorted(EXAMPLES.glob("*.epidsl")), ids=lambda p: p.name)
+def test_every_example_is_clean(example: Path) -> None:
+    assert main(["check", "--strict", str(example)]) == 0

@@ -12,8 +12,9 @@ from typing import TextIO
 from epidsl.backends import BackendResult
 from epidsl.backends.ode import ODEBackend
 from epidsl.checks import Severity, check
+from epidsl.errors import EpiError
 from epidsl.ir import EpiModel, SimulationConfig
-from epidsl.parser import EpiSyntaxError, parse
+from epidsl.parser import parse
 
 
 def _load(path: Path) -> tuple[EpiModel, ...] | None:
@@ -21,7 +22,7 @@ def _load(path: Path) -> tuple[EpiModel, ...] | None:
         return parse(path.read_text(encoding="utf-8"))
     except OSError as error:
         print(f"{path}: {error.strerror}", file=sys.stderr)
-    except EpiSyntaxError as error:
+    except EpiError as error:
         print(f"{path}:{error}", file=sys.stderr)
     return None
 

@@ -4,8 +4,8 @@ A domain-specific language for epidemiological modelling. A model is written onc
 compartments and flows, checked statically, and compiled to a typed intermediate
 representation that simulation backends consume.
 
-**Status:** early development. The ODE backend works end to end; model composition
-and stochastic backends are not implemented yet (see [Roadmap](#roadmap)).
+**Status:** early development. The ODE backend and model composition work end to
+end; stochastic backends are not implemented yet (see [Roadmap](#roadmap)).
 
 ## Install
 
@@ -44,6 +44,68 @@ uv run epidsl run examples/sir.epidsl --t-end 160 --out sir.csv
 `run` writes one CSV row per output time, with a column `t` and one column per
 compartment. Without `--out` the CSV goes to standard output.
 
+## Compose models
+
+A `compose` block builds the product of several models. Each model is read as an
+automaton whose states are its compartments, in the manner of a stochastic automata
+network; the result has one compartment per combination of states.
+
+```
+model Age {
+    compartment young = 300, old = 700
+    rate aging = 0.002 [1/day]
+    flow young -> old : aging * young
+}
+
+compose AgeSIR {
+    models: [SIR, Age]
+}
+```
+
+`AgeSIR` has the compartments `S_young`, `S_old`, `I_young`, `I_old`, `R_young`
+and `R_old`. Run it by name:
+
+```bash
+uv run epidsl run examples/sir_age.epidsl --model AgeSIR --t-end 160
+```
+
+The rules of composition:
+
+- **Compartments** are named by joining the local names with `_`, in the order of
+  the `models` list. Initial values are the independent joint distribution: the
+  product of each model's initial values, divided by `N` for each extra model.
+- **Flows** of each model are copied into every combination of the other models'
+  states.
+- **Rates** keep their meaning. The name of a flow's source denotes the specific
+  source compartment (`S` becomes `S_young`); every other compartment name denotes
+  the total over the other models (`I` becomes `I_young + I_old`). Infection in
+  `AgeSIR` therefore mixes homogeneously across age groups.
+- **Constants** of all models are merged. **Semantics** is the intersection.
+
+A `sync` rule adds a transition that moves several models at once. Here a severe
+infection changes a person's status and location in the same instant:
+
+```
+compose Hospital {
+    models: [Disease, Place]
+    sync S -> I, home -> hospital : severe * beta * S_home * I / N
+}
+```
+
+In a `sync` rate, the source is named by joining the moves' sources (`S_home`).
+With more than two models, a joined name that leaves some models out is a total
+over them, and the rule is copied into each of their states.
+
+A composition is rejected when: a model is unknown or has errors; two models share
+a compartment or constant name; the models' total populations differ or are zero;
+they have no semantics in common; a joined name is ambiguous; or a model has an
+inflow (`flow -> A`), which cannot be composed yet. Fewer than two models, and a
+malformed `sync` rule, are rejected too.
+
+A composed model is an ordinary model: it can be listed in another `compose`
+block, and `models: [A, B, C]` gives the same model as composing `A` and `B`
+first.
+
 ## Language reference
 
 | Statement | Meaning |
@@ -55,6 +117,9 @@ compartment. Without `--out` the CSV goes to standard output.
 | `flow A -> B : expr` | Moves population from `A` to `B` at rate `expr`. |
 | `flow -> A : expr` | Inflow (for example births). |
 | `flow A -> : expr` | Outflow (for example deaths). |
+| `compose Name { ... }` | Declares the product of several models. |
+| `models: [A, B]` | Inside `compose`: the models to compose, two or more. |
+| `sync a -> b, c -> d : expr` | Inside `compose`: a transition that moves two or more models at once, one move per model. |
 | `semantics: [ODE]` | Backends the model is valid for: `ODE`, `Gillespie`, `TauLeap`, `ABM`. Default `[ODE]`. |
 
 Expressions support `+ - * / ^`, parentheses, the built-in symbols `N` (total
@@ -99,7 +164,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 ## Roadmap
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend, CLI.
-2. `compose` blocks with synchronisation rules (stochastic automata network composition).
+2. **Done:** `compose` blocks with `sync` rules (stochastic automata network composition).
 3. Stochastic backends: Gillespie SSA, then tau-leap.
 4. Network-based agent backend, calibration, language server, PyPI release.
 

@@ -1,0 +1,28 @@
+-- A synchronised transition: a severe infection changes the disease status
+-- and the location of a person at the same instant.
+
+model Disease {
+    compartment S = 990, I = 10, R = 0
+
+    parameter beta = 0.3 [1/day]
+    rate gamma = 0.1 [1/day]
+    rate severe = 0.2 [1]            -- fraction of infections that are severe
+
+    flow S -> I : (1 - severe) * beta * S * I / N   -- mild infection, stays in place
+    flow I -> R : gamma * I
+}
+
+model Place {
+    compartment home = 1000, hospital = 0
+
+    rate discharge = 0.05 [1/day]
+
+    flow hospital -> home : discharge * hospital
+}
+
+compose Hospital {
+    models: [Disease, Place]
+
+    -- S_home is the source of this transition; I is the total over both places.
+    sync S -> I, home -> hospital : severe * beta * S_home * I / N
+}

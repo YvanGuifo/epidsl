@@ -100,6 +100,36 @@ class EpiModel:
 
 
 @dataclass(frozen=True, slots=True)
+class Ref:
+    """A reference by name to a model or to one of its compartments."""
+
+    name: str
+    line: int = _pos()
+    column: int = _pos()
+
+
+@dataclass(frozen=True, slots=True)
+class Sync:
+    """A synchronised transition: every ``(source, target)`` move fires at once."""
+
+    moves: tuple[tuple[Ref, Ref], ...]
+    expr: Expr
+    line: int = _pos()
+    column: int = _pos()
+
+
+@dataclass(frozen=True, slots=True)
+class Composition:
+    """A ``compose`` block, before it is flattened into an EpiModel."""
+
+    name: str
+    models: tuple[Ref, ...]
+    syncs: tuple[Sync, ...]
+    line: int = _pos()
+    column: int = _pos()
+
+
+@dataclass(frozen=True, slots=True)
 class SimulationConfig:
     t_end: float
     n_points: int = 201

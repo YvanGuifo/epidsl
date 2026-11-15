@@ -9,29 +9,28 @@ from typing import Any
 from lark import Lark, Token, Transformer, v_args
 from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken, VisitError
 
+from epidsl.compose import flatten
+from epidsl.errors import EpiSyntaxError
 from epidsl.ir import (
     BinOp,
     Call,
     Compartment,
+    Composition,
     Constant,
     EpiModel,
     Expr,
     Flow,
     Neg,
     Num,
+    Ref,
     Semantics,
     Sym,
+    Sync,
 )
 
+__all__ = ["EpiSyntaxError", "parse"]
+
 _GRAMMAR = Path(__file__).with_name("grammar.lark")
-
-
-class EpiSyntaxError(Exception):
-    def __init__(self, message: str, line: int, column: int) -> None:
-        super().__init__(f"{line}:{column}: syntax error: {message}")
-        self.message = message
-        self.line = line
-        self.column = column
 
 
 @cache
@@ -44,9 +43,32 @@ def _at(token: Token) -> dict[str, int]:
 
 
 @v_args(inline=True)
-class _ToIR(Transformer[Token, tuple[EpiModel, ...]]):
-    def start(self, *models: EpiModel) -> tuple[EpiModel, ...]:
-        return models
+class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
+    def start(self, *items: EpiModel | Composition) -> tuple[EpiModel | Composition, ...]:
+        return items
+
+    def compose(self, name: Token, *statements: tuple[Ref, ...] | Sync) -> Composition:
+        models: tuple[Ref, ...] | None = None
+        syncs: list[Sync] = []
+        for item in statements:
+            if isinstance(item, Sync):
+                syncs.append(item)
+            elif models is not None:
+                raise EpiSyntaxError(f"compose {name} declares models twice", **_at(name))
+            else:
+                models = item
+        return Composition(str(name), models or (), tuple(syncs), **_at(name))
+
+    def models(self, *names: Token) -> tuple[Ref, ...]:
+        return tuple(Ref(str(name), **_at(name)) for name in names)
+
+    def sync(self, *parts: Any) -> Sync:
+        *moves, expr = parts
+        first: Ref = moves[0][0]
+        return Sync(tuple(moves), expr, first.line, first.column)
+
+    def move(self, source: Token, arrow: Token, target: Token) -> tuple[Ref, Ref]:
+        return Ref(str(source), **_at(source)), Ref(str(target), **_at(target))
 
     def model(self, name: Token, *statements: Any) -> EpiModel:
         compartments: list[Compartment] = []
@@ -154,10 +176,14 @@ def _describe(error: UnexpectedInput) -> str:
 
 
 def parse(source: str) -> tuple[EpiModel, ...]:
-    """Parse ``source`` and return its models, raising EpiSyntaxError on bad input."""
+    """Parse ``source`` and return its models in source order.
+
+    ``compose`` blocks are flattened into ordinary models. Raises EpiSyntaxError on
+    malformed input and CompositionError on a composition that cannot be built.
+    """
     try:
         tree = _lark().parse(source)
-        return _ToIR().transform(tree)
+        items = _ToIR().transform(tree)
     except UnexpectedInput as error:
         line = error.line if error.line and error.line > 0 else source.count("\n") + 1
         column = error.column if error.column and error.column > 0 else 1
@@ -166,3 +192,10 @@ def parse(source: str) -> tuple[EpiModel, ...]:
         if isinstance(error.orig_exc, EpiSyntaxError):
             raise error.orig_exc from None
         raise
+
+    models: dict[str, EpiModel] = {}
+    for item in items:
+        if item.name in models:
+            raise EpiSyntaxError(f"'{item.name}' is defined more than once", item.line, item.column)
+        models[item.name] = flatten(item, models) if isinstance(item, Composition) else item
+    return tuple(models.values())

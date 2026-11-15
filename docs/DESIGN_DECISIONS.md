@@ -1,9 +1,9 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
-**Status:** Adopted — first vertical slice implemented (grammar, IR, checks C1–C8, ODE backend, CLI)
+**Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`
 
 > References, licences and competitor claims in this document have **not yet been
 > independently verified** (see "To verify" at the end). Do not copy them into a
@@ -41,7 +41,8 @@ linear. Statements are introduced by keywords; a trailing `;` is optional.
 
 ### D2 — Composition keyword: `compose`
 
-**Decision:** `compose ModelName { model_names; sync rules }`. *Not implemented yet.*
+**Decision:** `compose Name { models: [A, B, ...]  sync ... }`. The model list uses
+the same list syntax as `semantics`.
 
 **Alternatives considered:** a `network` keyword (ambiguous with ABM network
 topology); operator syntax `SIR ⊗ Demography` (not ASCII-safe).
@@ -104,6 +105,42 @@ target (a prior will attach to it later); `rate` is fixed.
 | C7 | warning | A compartment, rate or parameter is never used. |
 | C8 | error | A declaration reuses a reserved name (`N`, `t`, a function name). |
 
+### D10 — Composition semantics (2026-11-15)
+
+**Decision:** `compose` is the product of its models read as automata, flattened
+into an ordinary model before any backend sees it.
+
+- **States:** one compartment per combination of local states, named by joining
+  local names with `_` in model order.
+- **Initial distribution:** independent — the product of the marginals divided by
+  `N` per extra model. The models must therefore have the same positive total.
+- **Local transitions:** each flow is copied into every combination of the other
+  models' states (Kronecker sum).
+- **Synchronised transitions:** `sync a -> b, c -> d : expr` moves several models at
+  once, at most one move per model, and is added to the local transitions.
+- **Rates (functional rates):** in a rate, the name of the flow's source denotes the
+  specific source compartment; any other state name, or `_`-joined group of state
+  names, denotes the marginal total over the models it does not mention.
+
+**Rationale:**
+- Flattening keeps the IR and every backend unchanged, and makes composition
+  testable on its own: with no `sync` rule the automata are independent, so each
+  marginal of the product must reproduce its component and the joint must stay a
+  product. The test suite checks exactly that.
+- The rate rule is exact when a rate is linear in its source, which is the
+  per-capita reading of a transition. A rate that is non-linear in its source (for
+  example `k * S * S`) is lifted as written, on the stratum's own count.
+- Composition is associative: `[A, B, C]` equals composing `[A, B]` first (OQ3).
+
+**Limits, to revisit:**
+- A model with an inflow cannot be composed: the stratum newcomers enter is
+  unspecified. This excludes births for now.
+- A rate cannot yet depend on another model's state without a `sync` move (for
+  example an age-specific `beta`, or admitting only infected people to hospital).
+  This is the next extension to design.
+- Whether this reading matches Kendrick's composition operator has not been
+  checked against the paper.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -113,8 +150,8 @@ check from C9 and has no number yet.
 ## Roadmap
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend (SciPy LSODA), CLI.
-2. `compose` and SAN synchronisation. Brought forward ahead of the stochastic
-   backends because it is the scientific contribution and it constrains the IR.
+2. **Done:** `compose` and `sync`. Next for composition: state-dependent rates
+   and inflows (see D10).
 3. Gillespie SSA, then tau-leap, validated by convergence of the mean to the ODE.
 4. Network ABM backend; calibration (ABC-SMC); language server; PyPI release.
 
@@ -131,7 +168,7 @@ pre-proposal; optional carbon tracking of simulation runs.
 |----|----------|--------------------|
 | OQ1 | Is the PyPI name `epidsl` available? | Before first release |
 | OQ2 | C9 (mass conservation): error or warning for inflows and outflows? | When C9 is implemented |
-| OQ3 | Should `compose` take 3+ models directly, or only pairs? | Before implementing `compose` |
+| OQ3 | How should a rate depend on another model's state, and where do inflows enter a product? | Before age-structured examples |
 | OQ4 | Must source files be UTF-8 (Unicode in unit annotations such as `day⁻¹`)? | Language server |
 
 ---

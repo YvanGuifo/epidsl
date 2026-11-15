@@ -1,7 +1,7 @@
 // EpiDSL grammar (LALR). Whitespace and newlines are insignificant;
 // statements are introduced by keywords, with an optional trailing ";".
 
-start: model+
+start: (model | compose)+
 
 model: "model" NAME "{" (_statement ";"?)* "}"
 
@@ -16,6 +16,12 @@ rate: "rate" NAME "=" signed [UNIT]
 flow: "flow" [NAME] ARROW [NAME] ":" _expr
 
 semantics: "semantics" ":" "[" NAME ("," NAME)* "]"
+
+compose: "compose" NAME "{" ((models | sync) ";"?)* "}"
+
+models: "models" ":" "[" NAME ("," NAME)* "]"
+sync: "sync" move ("," move)+ ":" _expr
+move: NAME ARROW NAME
 
 signed: NUMBER        -> positive
       | "-" NUMBER    -> negative
