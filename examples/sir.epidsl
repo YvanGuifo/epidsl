@@ -1,0 +1,13 @@
+/* Classic SIR model, frequency-dependent transmission.
+   R0 = beta / gamma = 3. */
+model SIR {
+    semantics: [ODE]
+
+    compartment S = 990, I = 10, R = 0
+
+    parameter beta = 0.3 [1/day]   -- transmission rate
+    rate gamma = 0.1 [1/day]       -- recovery rate
+
+    flow S -> I : beta * S * I / N
+    flow I -> R : gamma * I
+}

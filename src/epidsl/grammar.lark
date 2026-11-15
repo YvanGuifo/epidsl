@@ -1,0 +1,46 @@
+// EpiDSL grammar (LALR). Whitespace and newlines are insignificant;
+// statements are introduced by keywords, with an optional trailing ";".
+
+start: model+
+
+model: "model" NAME "{" (_statement ";"?)* "}"
+
+_statement: compartments | parameter | rate | flow | semantics
+
+compartments: "compartment" compartment ("," compartment)*
+compartment: NAME ["=" signed]
+
+parameter: "parameter" NAME "=" signed [UNIT]
+rate: "rate" NAME "=" signed [UNIT]
+
+flow: "flow" [NAME] ARROW [NAME] ":" _expr
+
+semantics: "semantics" ":" "[" NAME ("," NAME)* "]"
+
+signed: NUMBER        -> positive
+      | "-" NUMBER    -> negative
+
+_expr: sum
+?sum: product
+    | sum "+" product   -> add
+    | sum "-" product   -> sub
+?product: unary
+    | product "*" unary -> mul
+    | product "/" unary -> div
+?unary: "-" unary       -> neg
+    | power
+?power: atom
+    | atom "^" unary    -> pow
+?atom: NUMBER           -> number
+    | NAME              -> symbol
+    | NAME "(" [_expr ("," _expr)*] ")" -> call
+    | "(" _expr ")"
+
+ARROW: "->"
+NAME: /[A-Za-z_][A-Za-z0-9_]*/
+NUMBER: /(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?/
+UNIT: /\[[^\]\n]*\]/
+
+%ignore /\s+/
+%ignore /--[^\n]*/
+%ignore /\/\*(.|\n)*?\*\//

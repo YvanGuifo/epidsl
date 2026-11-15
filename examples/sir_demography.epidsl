@@ -1,0 +1,18 @@
+-- SIR with births and deaths (open population).
+-- A flow with no source is an inflow; a flow with no target is an outflow.
+model SIRDemography {
+    semantics: [ODE]
+
+    compartment S = 990, I = 10, R = 0
+
+    parameter beta = 0.5 [1/day]
+    rate gamma = 0.1 [1/day]
+    rate mu = 0.01 [1/day]         -- per-capita birth and death rate
+
+    flow -> S : mu * N
+    flow S -> I : beta * S * I / N
+    flow I -> R : gamma * I
+    flow S -> : mu * S
+    flow I -> : mu * I
+    flow R -> : mu * R
+}
