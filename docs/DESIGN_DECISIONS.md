@@ -1,9 +1,9 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.2
+**Version:** 1.3
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
-**Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`
+**Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie backend
 
 > References, licences and competitor claims in this document have **not yet been
 > independently verified** (see "To verify" at the end). Do not copy them into a
@@ -141,6 +141,28 @@ into an ordinary model before any backend sees it.
 - Whether this reading matches Kendrick's composition operator has not been
   checked against the paper.
 
+### D11 — Gillespie backend (2026-11-15)
+
+**Decision:** Gillespie's direct method, one trajectory per run, reported on the
+same regular time grid as the ODE backend (the state is constant between jumps).
+Each flow is a jump of one individual whose propensity is the flow's expression.
+
+- Initial values must be whole numbers; a fractional value is refused rather than
+  rounded, because rounding would change the total population. A composed model
+  whose independent initial distribution is fractional is therefore refused.
+- A flow has propensity zero while its source is empty, whatever its expression.
+- A negative or undefined propensity stops the run with an error.
+- Rates that use `t` are refused: the direct method assumes rates are constant
+  between jumps. Supporting them needs thinning or a modified next-reaction method.
+- An event budget (10 million by default) stops models whose rates grow without limit.
+
+**Validation:** the pure death process against its binomial law, and the
+immigration–death process against its Poisson stationary law (mean and variance,
+400 seeded runs each).
+
+**Not done:** ensembles (several runs with summary statistics) in the CLI, and any
+performance work — the loop is plain Python.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -152,7 +174,7 @@ check from C9 and has no number yet.
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend (SciPy LSODA), CLI.
 2. **Done:** `compose` and `sync`. Next for composition: state-dependent rates
    and inflows (see D10).
-3. Gillespie SSA, then tau-leap, validated by convergence of the mean to the ODE.
+3. **Done:** Gillespie SSA (D11). Next: tau-leap, validated against Gillespie.
 4. Network ABM backend; calibration (ABC-SMC); language server; PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM

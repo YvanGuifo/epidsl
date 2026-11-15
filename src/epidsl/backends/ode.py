@@ -6,9 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.integrate import solve_ivp
 
-from epidsl.backends import BackendResult
-from epidsl.checks import errors
-from epidsl.expr import compile_expr
+from epidsl.backends import BackendResult, compile_model
 from epidsl.ir import EpiModel, Semantics, SimulationConfig
 
 
@@ -20,45 +18,24 @@ class ODEBackend:
         self.atol = atol
 
     def run(self, model: EpiModel, config: SimulationConfig) -> BackendResult:
-        problems = errors(model)
-        if problems:
-            details = "; ".join(str(p) for p in problems)
-            raise ValueError(f"model {model.name} has errors: {details}")
-        if Semantics.ODE not in model.semantics:
-            declared = ", ".join(s.value for s in model.semantics)
-            raise ValueError(
-                f"model {model.name} does not declare ODE semantics (declared: {declared})"
-            )
-
-        names = [c.name for c in model.compartments]
-        index = {name: i for i, name in enumerate(names)}
-        constants = {k.name: k.value for k in model.constants}
-        flows = [
-            (
-                None if f.source is None else index[f.source],
-                None if f.target is None else index[f.target],
-                compile_expr(f.expr, index, constants),
-            )
-            for f in model.flows
-        ]
+        compiled = compile_model(model, Semantics.ODE)
 
         def rhs(t: float, y: NDArray[np.float64]) -> NDArray[np.float64]:
             dy = np.zeros_like(y)
-            for source, target, rate in flows:
-                value = rate(y, t)
-                if source is not None:
-                    dy[source] -= value
-                if target is not None:
-                    dy[target] += value
+            for flow in compiled.flows:
+                value = flow.rate(y, t)
+                if flow.source is not None:
+                    dy[flow.source] -= value
+                if flow.target is not None:
+                    dy[flow.target] += value
             return dy
 
         t_eval = np.linspace(config.t_start, config.t_end, config.n_points)
-        y0 = np.array([c.initial for c in model.compartments], dtype=np.float64)
         try:
             solution = solve_ivp(
                 rhs,
                 (config.t_start, config.t_end),
-                y0,
+                compiled.initial,
                 method="LSODA",
                 t_eval=t_eval,
                 rtol=self.rtol,
@@ -75,10 +52,10 @@ class ODEBackend:
             raise RuntimeError(f"ODE solver failed for model {model.name}: {solution.message}")
 
         # The solver interpolates output points; report the initial state exactly.
-        solution.y[:, 0] = y0
+        solution.y[:, 0] = compiled.initial
 
         return BackendResult(
             t=solution.t,
-            y={name: solution.y[i] for i, name in enumerate(names)},
+            y={name: solution.y[i] for i, name in enumerate(compiled.names)},
             metadata={"backend": "ODE", "method": "LSODA", "nfev": int(solution.nfev)},
         )

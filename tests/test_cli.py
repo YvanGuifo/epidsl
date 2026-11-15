@@ -85,3 +85,21 @@ def test_composition_error_is_reported(tmp_path: Path, capsys: pytest.CaptureFix
 @pytest.mark.parametrize("example", sorted(EXAMPLES.glob("*.epidsl")), ids=lambda p: p.name)
 def test_every_example_is_clean(example: Path) -> None:
     assert main(["check", "--strict", str(example)]) == 0
+
+
+def test_run_gillespie_is_reproducible_with_seed(capsys: pytest.CaptureFixture[str]) -> None:
+    args = ["run", SIR, "--t-end", "50", "--points", "6", "--method", "gillespie", "--seed", "7"]
+    assert main(args) == 0
+    first = capsys.readouterr().out
+    assert main(args) == 0
+    assert capsys.readouterr().out == first
+
+    rows = [line.split(",") for line in first.splitlines()]
+    assert rows[0] == ["t", "S", "I", "R"]
+    assert all(sum(float(x) for x in row[1:]) == 1000.0 for row in rows[1:])
+
+
+def test_run_gillespie_refuses_undeclared_model(capsys: pytest.CaptureFixture[str]) -> None:
+    source = str(EXAMPLES / "sir_demography.epidsl")
+    assert main(["run", source, "--t-end", "1", "--method", "gillespie"]) == 1
+    assert "does not declare Gillespie semantics" in capsys.readouterr().err

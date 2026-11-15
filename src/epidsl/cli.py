@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TextIO
 
 from epidsl.backends import BackendResult
+from epidsl.backends.gillespie import GillespieBackend
 from epidsl.backends.ode import ODEBackend
 from epidsl.checks import Severity, check
 from epidsl.errors import EpiError
@@ -75,7 +76,9 @@ def _run(args: argparse.Namespace) -> int:
     if not _report(args.file, model, args.strict):
         return 1
     try:
-        result = ODEBackend().run(model, SimulationConfig(t_end=args.t_end, n_points=args.points))
+        backend = GillespieBackend() if args.method == "gillespie" else ODEBackend()
+        config = SimulationConfig(t_end=args.t_end, n_points=args.points, seed=args.seed)
+        result = backend.run(model, config)
     except (ValueError, RuntimeError) as error:
         print(f"{args.file}: {error}", file=sys.stderr)
         return 1
@@ -108,6 +111,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_cmd.add_argument("file", type=Path)
     run_cmd.add_argument("--t-end", type=float, required=True, help="end time of the simulation")
     run_cmd.add_argument("--points", type=_points, default=201, help="number of output points")
+    run_cmd.add_argument(
+        "--method",
+        choices=["ode", "gillespie"],
+        default="ode",
+        help="simulation method (default: ode)",
+    )
+    run_cmd.add_argument("--seed", type=int, help="random seed for stochastic methods")
     run_cmd.add_argument("--model", help="model to run when the file declares several")
     run_cmd.add_argument("--out", type=Path, help="CSV file to write (default: standard output)")
     run_cmd.add_argument("--strict", action="store_true", help="treat warnings as errors")

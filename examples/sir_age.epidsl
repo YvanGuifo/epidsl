@@ -2,6 +2,8 @@
 -- AgeSIR has one compartment per (status, age group) pair: S_young, S_old, ...
 
 model SIR {
+    semantics: [ODE, Gillespie]
+
     compartment S = 990, I = 10, R = 0
 
     parameter beta = 0.3 [1/day]
@@ -12,6 +14,8 @@ model SIR {
 }
 
 model Age {
+    semantics: [ODE, Gillespie]
+
     compartment young = 300, old = 700
 
     rate aging = 0.002 [1/day]

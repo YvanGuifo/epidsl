@@ -134,3 +134,5 @@ class SimulationConfig:
     t_end: float
     n_points: int = 201
     t_start: float = 0.0
+    #: Seed of the random generator for stochastic backends; None draws a fresh one.
+    seed: int | None = None
