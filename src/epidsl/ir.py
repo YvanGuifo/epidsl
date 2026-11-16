@@ -197,12 +197,16 @@ class Sync:
 
 @dataclass(frozen=True, slots=True)
 class Stratified:
-    """A constant of one composed model given one value per state of another (``by``)."""
+    """A constant of one composed model given one value per state of another (``by``).
+
+    ``by`` names that model once; naming it twice declares a matrix, whose values are
+    then keyed by an ordered pair of states: the one a flow leaves, then the one it meets.
+    """
 
     name: str
     kind: Literal["parameter", "rate"]
-    by: Ref
-    values: tuple[tuple[Ref, float], ...]
+    by: tuple[Ref, ...]
+    values: tuple[tuple[tuple[Ref, ...], float], ...]
     unit: str | None = None
     line: int = _pos()
     column: int = _pos()

@@ -16,6 +16,10 @@ The composition is their product, in the manner of a stochastic automata network
   constant ``beta`` by one constant per state of ``Age`` (``beta_young``, ...). A
   transition uses the one of the cell it leaves (or enters, for an inflow): this is
   a rate of one automaton that depends on the state of another.
+* **Contact matrices.** ``by Age, Age`` gives one constant per ordered pair of states
+  (``beta_young_old``). A rate that uses one is the sum, over the states of ``Age``, of
+  that rate with the matrix on the pair (the cell's own state, the state met) and every
+  group of compartments restricted to the cells in the state met.
 * **Inflows.** Newcomers of one model's inflow enter the other models in the state
   given by ``enter Model at state``.
 * **Observables.** Each model's observables are kept. A state name becomes the
@@ -30,6 +34,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from dataclasses import dataclass
 from itertools import combinations, product
 from typing import NoReturn, Protocol
 
@@ -47,6 +52,7 @@ from epidsl.ir import (
     Flow,
     Incidence,
     Neg,
+    Num,
     Observable,
     Semantics,
     Sym,
@@ -136,8 +142,8 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
             if flow.source is None:
                 assert flow.target is not None
                 cell = tuple(flow.target if j == i else entry[j] for j in range(len(parts)))
-                expr = _rewrite(flow.expr, None, "", marginals, _renames(cell, strata))
-                flows.append(Flow(None, _name(cell), expr, flow.line, flow.column))
+                rate = _rate_for(flow.expr, None, cell, cells, marginals, strata, flow)
+                flows.append(Flow(None, _name(cell), rate, flow.line, flow.column))
                 continue
             moves = {i: (flow.source, flow.target)}
             flows.extend(_lift(moves, flow.source, flow, cells, marginals, strata))
@@ -192,7 +198,7 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
         declared_by[name] = composition.name
         for node in walk(observable.expr):
             if isinstance(node, Sym) and node.name in strata:
-                replacements = ", ".join(strata[node.name][1].values())
+                replacements = ", ".join(strata[node.name].generated.values())
                 _fail(
                     f"observable '{name}' uses the stratified constant '{node.name}'; "
                     f"name one of {replacements}",
@@ -272,9 +278,22 @@ def _entries(
     return entry
 
 
-#: For each stratified constant: the index of the model it varies by, and the name
-#: of the constant that replaces it in each state of that model.
-Strata = dict[str, tuple[int, dict[str, str]]]
+@dataclass(frozen=True, slots=True)
+class Stratum:
+    """A stratified constant: the model it varies by, and the constants replacing it.
+
+    ``generated`` is keyed by the state of that model, or — for a matrix — by the
+    ordered pair (the state a flow leaves, the state it meets).
+    """
+
+    by: int
+    by_name: str
+    generated: dict[tuple[str, ...], str]
+    matrix: bool
+
+
+#: Every stratified constant of a composition, by its original name.
+Strata = dict[str, Stratum]
 
 
 def _stratify(
@@ -283,7 +302,7 @@ def _stratify(
     index: Mapping[str, int],
     constants: dict[str, Constant],
 ) -> tuple[dict[str, Constant], Strata]:
-    """Replace each stratified constant by one constant per state of its ``by`` model."""
+    """Replace each stratified constant by one constant per state, or per ordered pair."""
     strata: Strata = {}
     for declared in composition.stratified:
         name = declared.name
@@ -291,19 +310,40 @@ def _stratify(
             _fail(f"constant '{name}' is stratified more than once", declared)
         if name not in constants:
             _fail(f"no composed model declares a constant '{name}'", declared)
-        if declared.by.name not in index:
-            _fail(f"'{declared.by.name}' is not one of the composed models", declared.by)
-        by = index[declared.by.name]
+        for ref in declared.by:
+            if ref.name not in index:
+                _fail(f"'{ref.name}' is not one of the composed models", ref)
+        matrix = len(declared.by) > 1
+        by_name = declared.by[0].name
+        if matrix and declared.by[1].name != by_name:
+            _fail(
+                f"a matrix is indexed by one model twice; write 'by {by_name}, {by_name}'",
+                declared.by[1],
+            )
+        by = index[by_name]
         states = [c.name for c in parts[by].compartments]
+        keys: list[tuple[str, ...]] = (
+            [(a, b) for a in states for b in states] if matrix else [(a,) for a in states]
+        )
 
-        given: dict[str, float] = {}
-        for state, value in declared.values:
-            if state.name not in states:
-                _fail(f"'{state.name}' is not a compartment of model '{declared.by.name}'", state)
-            if state.name in given:
-                _fail(f"'{state.name}' is given more than once", state)
-            given[state.name] = value
-        missing = [f"'{local}'" for local in states if local not in given]
+        given: dict[tuple[str, ...], float] = {}
+        for refs, value in declared.values:
+            if len(refs) != len(keys[0]):
+                _fail(
+                    f"a value of '{name}' needs a pair of states, as 'young, old: 0.2'"
+                    if matrix
+                    else f"'{name}' takes one state per value; declare it "
+                    f"'by {by_name}, {by_name}' to give it a pair",
+                    refs[0],
+                )
+            for ref in refs:
+                if ref.name not in states:
+                    _fail(f"'{ref.name}' is not a compartment of model '{by_name}'", ref)
+            key = tuple(ref.name for ref in refs)
+            if key in given:
+                _fail(f"'{', '.join(key)}' is given more than once", refs[0])
+            given[key] = value
+        missing = [f"'{', '.join(key)}'" for key in keys if key not in given]
         if missing:
             _fail(f"constant '{name}' has no value for {', '.join(missing)}", declared)
 
@@ -311,17 +351,17 @@ def _stratify(
         prior = declared.prior
         if prior is None and declared.kind == "parameter":
             prior = constants[name].prior
-        generated = {local: f"{name}_{local}" for local in states}
+        generated = {key: "_".join((name, *key)) for key in keys}
         replaced: dict[str, Constant] = {}
         for existing, constant in constants.items():
             if existing != name:
                 replaced[existing] = constant
                 continue
-            for local in states:
-                replaced[generated[local]] = Constant(
-                    generated[local],
+            for key in keys:
+                replaced[generated[key]] = Constant(
+                    generated[key],
                     declared.kind,
-                    given[local],
+                    given[key],
                     unit,
                     declared.line,
                     declared.column,
@@ -335,13 +375,78 @@ def _stratify(
                     declared,
                 )
         constants = replaced
-        strata[name] = (by, generated)
+        strata[name] = Stratum(by, by_name, generated, matrix)
     return constants, strata
 
 
-def _renames(cell: Cell, strata: Strata) -> dict[str, str]:
-    """The stratified constants as seen from ``cell``: original name -> its replacement."""
-    return {name: generated[cell[by]] for name, (by, generated) in strata.items()}
+#: Stands in for a name that is not stratified, so a lookup needs no second test.
+_PLAIN = Stratum(0, "", {}, False)
+
+
+def _renames(cell: Cell, strata: Strata, met: str | None = None) -> dict[str, str]:
+    """The stratified constants as seen from ``cell``, meeting a cell in state ``met``.
+
+    A matrix is left out when no state is met, since it then stands for no one value.
+    """
+    names: dict[str, str] = {}
+    for name, stratum in strata.items():
+        if not stratum.matrix:
+            names[name] = stratum.generated[(cell[stratum.by],)]
+        elif met is not None:
+            names[name] = stratum.generated[(cell[stratum.by], met)]
+    return names
+
+
+def _symbols(expr: Expr) -> set[str]:
+    return {node.name for node in walk(expr) if isinstance(node, Sym)}
+
+
+def _rate_for(
+    expr: Expr,
+    source_name: str | None,
+    cell: Cell,
+    cells: list[Cell],
+    marginals: Mapping[str, list[str]],
+    strata: Strata,
+    origin: _Positioned,
+) -> Expr:
+    """Rewrite a rate for ``cell``, summing over the state met when it uses a matrix."""
+    matrices = sorted(name for name in _symbols(expr) if strata.get(name, _PLAIN).matrix)
+    if not matrices:
+        return _rewrite(expr, source_name, _name(cell), marginals, _renames(cell, strata))
+    models = {strata[name].by for name in matrices}
+    if len(models) > 1:
+        _fail(
+            f"the rate uses matrices of two different models ({', '.join(matrices)}); "
+            "a rate is summed over one model only",
+            origin,
+        )
+    by = models.pop()
+    if not any(name in marginals and name != source_name for name in _symbols(expr)):
+        _fail(
+            f"the rate uses the matrix '{matrices[0]}' but names no group of compartments; "
+            f"a matrix is summed over the state of '{strata[matrices[0]].by_name}' it meets",
+            origin,
+        )
+
+    state_of = {_name(c): c[by] for c in cells}
+    terms = [
+        _rewrite(
+            expr,
+            source_name,
+            _name(cell),
+            {
+                name: [member for member in members if state_of[member] == met]
+                for name, members in marginals.items()
+            },
+            _renames(cell, strata, met),
+        )
+        for met in dict.fromkeys(c[by] for c in cells)
+    ]
+    total = terms[0]
+    for term in terms[1:]:
+        total = BinOp("+", total, term)
+    return total
 
 
 def _common_total(composition: Composition, parts: list[EpiModel]) -> float:
@@ -411,7 +516,7 @@ def _lift(
             Flow(
                 _name(cell),
                 destination,
-                _rewrite(origin.expr, source_name, _name(cell), marginals, _renames(cell, strata)),
+                _rate_for(origin.expr, source_name, cell, cells, marginals, strata, origin),
                 origin.line,
                 origin.column,
             )
@@ -477,6 +582,8 @@ def _rewrite(
         case Sym(name, line, column) if name in renames:
             return Sym(renames[name], line, column)
         case Sym(name, line, column) if name in marginals:
+            if not marginals[name]:
+                return Num(0.0)  # no cell of this group is in the state being met
             terms: list[Expr] = [Sym(member, line, column) for member in marginals[name]]
             total = terms[0]
             for term in terms[1:]:

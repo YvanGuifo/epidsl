@@ -29,9 +29,12 @@ models: "models" ":" "[" NAME ("," NAME)* "]"
 sync: "sync" move ("," move)+ ":" _expr
 move: NAME ARROW NAME
 
-stratified_parameter: "parameter" NAME "by" NAME "=" "{" stratum ("," stratum)* "}" [prior] [UNIT]
-stratified_rate: "rate" NAME "by" NAME "=" "{" stratum ("," stratum)* "}" [UNIT]
+stratified_parameter: "parameter" NAME "by" by_models "=" "{" stratum ("," stratum)* "}" [prior] [UNIT]
+stratified_rate: "rate" NAME "by" by_models "=" "{" stratum ("," stratum)* "}" [UNIT]
+by_models: NAME
+         | NAME "," NAME
 stratum: NAME ":" signed
+       | NAME "," NAME ":" signed
 
 enter: "enter" NAME "at" NAME
 

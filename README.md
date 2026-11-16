@@ -286,8 +286,49 @@ at `beta_young * S_young * I / N`. Every state of the `by` model needs a value. 
 unit is kept from the original constant unless a new one is given.
 
 This expresses a rate that depends on the state of the individual who moves, such
-as susceptibility by age. It does not express a contact matrix, in which the rate
-also depends on the age of the people met.
+as susceptibility by age.
+
+### Say who meets whom
+
+Naming the model twice gives one value per ordered pair of states — a contact
+matrix. The row is the group being infected, the column the group it meets:
+
+```
+compose ContactMatrix {
+    models: [Epidemic, Age]
+
+    parameter beta by Age, Age = {
+        young, young: 0.9,
+        young, old:   0.15,
+        old,   young: 0.15,
+        old,   old:   0.35
+    }
+}
+```
+
+The flow is still written once, in the component model, and is still
+`flow S -> I : beta * S * I / N`. A rate that uses a matrix becomes the sum over the
+states of `Age` of that rate, with the matrix on the pair (the state the flow
+leaves, the state it meets) and each group of compartments restricted to that
+state. The infection of the young is therefore generated as:
+
+```
+beta_young_young * S_young * I_young / N + beta_young_old * S_young * I_old / N
+```
+
+`N`, time and ordinary constants are untouched. A rate that uses a matrix must name
+a group of compartments for the sum to range over, and one rate may use matrices of
+one model only. A matrix is indexed by one model twice (`by Age, Age`); two
+different models are not supported.
+
+```bash
+uv run epidsl run examples/sir_contact_matrix.epidsl --model ContactMatrix --t-end 120
+```
+
+Estimating the entries of a matrix from case data is possible but often weakly
+determined: on the example above, four entries estimated from two weekly case
+series give wide intervals, because very different matrices fit the data almost
+equally well. Contact matrices are usually measured, not inferred.
 
 ### Say where newcomers enter
 
@@ -375,6 +416,7 @@ first.
 | `models: [A, B]` | Inside `compose`: the models to compose, two or more. |
 | `sync a -> b, c -> d : expr` | Inside `compose`: a transition that moves two or more models at once, one move per model. |
 | `rate c by B = { x: 1, y: 2 }` | Inside `compose`: gives constant `c` one value per compartment of model `B`. Also with `parameter`. |
+| `rate c by B, B = { x, x: 1, x, y: 2, ... }` | The same with one value per ordered pair: a contact matrix. |
 | `enter B at x` | Inside `compose`: newcomers from another model's inflow enter `B` in compartment `x`. |
 | `rate`, `parameter`, `observe` | Inside `compose`: extra constants and observables of the composed model. |
 | `semantics: [ODE]` | Backends the model is valid for: `ODE`, `Gillespie`, `TauLeap`, `ABM`. Default `[ODE]`. |
@@ -451,7 +493,8 @@ Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 4. **Done:** calibration by ABC-SMC, observables and incidence.
 5. **Done:** release preparation (package builds and installs cleanly; not published).
 6. **Done:** the studio, a visual workbench in the browser.
-7. Contact matrices, network-based agent backend, language server, first PyPI release.
+7. **Done:** contact matrices.
+8. Network-based agent backend, language server, first PyPI release.
 
 Design rationale, and how each method differs from the paper it follows, are
 recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md). References are in

@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.13
+**Version:** 1.14
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -437,6 +437,50 @@ and has no automated test.
   no way yet to choose which model goes where.
 - The studio's wording is in English only.
 
+### D20 — Contact matrices (2026-11-16)
+
+**Decision (chosen by the author among three options):** naming the model twice,
+`parameter beta by Age, Age = { young, young: .., young, old: .., ... }`, gives one
+constant per ordered pair of states (`beta_young_old`). The flow stays written once
+in the component model.
+
+**Semantics.** A rate that uses a matrix is the sum, over the states `b` of that
+model, of the rate in which the matrix takes the pair (the state the flow leaves,
+`b`) and every group of compartments is restricted to the cells in state `b`. `N`,
+time, ordinary constants and the flow's own source are untouched. A group that names
+no cell in state `b` contributes zero.
+
+**Alternatives not taken:** an explicit `mix(c, I)` function, and flows rewritten by
+hand in the compose block. Both would have forced the component's flow to be
+rewritten, which is what composition exists to avoid.
+
+**Restrictions, each with its own error:** a matrix is indexed by one model twice
+(`by Age, Age`, not two models); every ordered pair needs a value; one rate may use
+matrices of one model only; and a rate that uses a matrix must name a group of
+compartments, since otherwise the matrix would collapse to a row sum.
+
+**Validation:** a matrix whose rows are constant reproduces the one-way
+stratification exactly; with the off-diagonal entries at zero, each group is a closed
+SIR of its own and the final-size relation holds within it; moving the same total
+contact from within groups to across them changes the outcome in the expected
+direction. Nine deliberate faults were each caught.
+
+**Finding: four entries are weakly identified from two case series.** On
+`examples/sir_contact_matrix.epidsl`, calibrating the four entries from weekly cases
+by age (300 particles, 12 populations, 109 000 simulations, about 7 minutes) left
+wide intervals that cover the truth but whose means are far from it. The distance
+surface is nearly flat: 0.0130 at the true matrix against 0.0150 at the estimate,
+and *lower* a quarter of the way between them. This is the model being
+under-determined, not the sampler failing; contact matrices are normally measured in
+surveys rather than inferred from case counts.
+
+**Limits:**
+- The generated rate is the sum, not the factored form
+  (`(b_yy * I_young + b_yo * I_old) * S_young / N`); the two are the same value.
+- A matrix cannot cross two different models (OQ3 answered: one model only).
+- A matrix cannot be used in an observable declared in a compose block; name the
+  generated constants there instead.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -453,7 +497,8 @@ check from C9 and has no number yet.
 4. **Done:** calibration by ABC-SMC (D15), observables and incidence (D16).
 5. **Done:** release preparation (D18).
 6. **Done:** the studio (D19).
-7. Contact matrices; network ABM backend; language server; first PyPI release.
+7. **Done:** contact matrices (D20).
+8. Network ABM backend; language server; first PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM
 code-generation benchmark task suite for EpiDSL; a Bayesian calibration backend
@@ -467,7 +512,6 @@ pre-proposal; optional carbon tracking of simulation runs.
 | ID | Question | Decision needed by |
 |----|----------|--------------------|
 | OQ2 | C9 (mass conservation): error or warning for inflows and outflows? | When C9 is implemented |
-| OQ3 | How should a contact matrix (a rate depending on both parties' strata) be written? | Before realistic age-structured models |
 | OQ4 | Must source files be UTF-8 (Unicode in unit annotations such as `day⁻¹`)? | Language server |
 
 ---

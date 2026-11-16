@@ -1,0 +1,40 @@
+-- Who infects whom: a contact matrix by age group.
+-- The young mix mostly among themselves; the old mix less, and across less still.
+-- Each entry can be estimated from the reported cases of each group.
+
+model Epidemic {
+    compartment S = 9900, I = 100, R = 0
+
+    parameter beta = 0.3 prior uniform(0.05, 1.5) [1/day]
+    rate gamma = 0.1 [1/day]
+
+    flow S -> I : beta * S * I / N
+    flow I -> R : gamma * I
+}
+
+model Age {
+    compartment young = 3000, old = 7000
+
+    rate aging = 0.0005 [1/day]
+
+    flow young -> old : aging * young
+}
+
+compose ContactMatrix {
+    models: [Epidemic, Age]
+
+    -- Row: the group being infected. Column: the group it meets.
+    parameter beta by Age, Age = {
+        young, young: 0.9,
+        young, old:   0.15,
+        old,   young: 0.15,
+        old,   old:   0.35
+    }
+
+    -- Fraction of infections reported in each age group.
+    rate rho_young = 0.6 [1]
+    rate rho_old = 0.8 [1]
+
+    observe cases_young = rho_young * incidence(S_young -> I_young)
+    observe cases_old = rho_old * incidence(S_old -> I_old)
+}

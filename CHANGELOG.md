@@ -16,8 +16,8 @@ First version, not yet published.
 - **Static checks** C1–C8, C11 and C12, with source positions; `--strict` turns
   warnings into errors.
 - **Composition.** `compose` blocks: product of models, `sync` rules, constants
-  stratified with `by`, entry states with `enter`, and constants and observables
-  declared in the block.
+  stratified with `by`, contact matrices with `by X, X`, entry states with `enter`,
+  and constants and observables declared in the block.
 - **Backends.** Deterministic (ODE, LSODA), exact stochastic (Gillespie) and
   approximate stochastic (tau-leap with adaptive steps).
 - **Ensembles.** `--runs` writes the mean and quantiles of many stochastic runs.
