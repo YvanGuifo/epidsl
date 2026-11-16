@@ -7,8 +7,9 @@ from dataclasses import dataclass, replace
 import numpy as np
 from numpy.typing import NDArray
 
-from epidsl.backends import Backend
+from epidsl.backends import Backend, BackendResult
 from epidsl.ir import EpiModel, SimulationConfig
+from epidsl.parallel import Pool, split
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,17 +39,34 @@ class EnsembleResult:
         return {name: values[c] for c, name in enumerate(self.names)}
 
 
+def _run_chunk(
+    job: tuple[Backend, EpiModel, SimulationConfig, list[int]],
+) -> list[BackendResult]:
+    """One worker's share of an ensemble: the runs for the seeds it was given."""
+    backend, model, config, seeds = job
+    return [backend.run(model, replace(config, seed=seed)) for seed in seeds]
+
+
 def run_ensemble(
-    backend: Backend, model: EpiModel, config: SimulationConfig, runs: int
+    backend: Backend,
+    model: EpiModel,
+    config: SimulationConfig,
+    runs: int,
+    *,
+    workers: int = 1,
 ) -> EnsembleResult:
     """Run ``backend`` ``runs`` times with independent seeds derived from ``config.seed``.
 
     The same ``config.seed`` always gives the same ensemble; None draws fresh seeds.
+    ``workers`` spreads the runs over that many processes, 0 meaning one per processor.
     """
     if runs < 1:
         raise ValueError("an ensemble needs at least one run")
     seeds = [int(s) for s in np.random.SeedSequence(config.seed).generate_state(runs, np.uint64)]
-    results = [backend.run(model, replace(config, seed=seed)) for seed in seeds]
+    with Pool(workers) as pool:
+        jobs = [(backend, model, config, chunk) for chunk in split(seeds, pool.workers * 4)]
+        results = pool.map(_run_chunk, jobs)
+
     series = [{**result.y, **result.observed} for result in results]
     names = list(series[0])
     return EnsembleResult(

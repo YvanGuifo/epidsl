@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.14
+**Version:** 1.15
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -312,7 +312,7 @@ and tests were added for them.
 - Priors on stratified parameters: addressed by D17.
 - The posterior is approximate: its width depends on the final tolerance, hence on
   `--populations`.
-- Simulations run one after another.
+- Parallelism: addressed by D21.
 
 ### D16 — Observables and incidence (2026-11-15)
 
@@ -481,6 +481,44 @@ surveys rather than inferred from case counts.
 - A matrix cannot be used in an observable declared in a compose block; name the
   generated constants there instead.
 
+### D21 — Running over several processors (2026-11-16)
+
+**Decision:** `workers` on `run_ensemble` and `calibrate`, and `--workers` on the
+two commands, spread the simulations over that many processes; 0 means one per
+processor. The guarantee is that **the number of workers changes how long a run
+takes and nothing else**: a seeded run gives the same particles, weights,
+tolerances and count of simulations whatever it is set to.
+
+**How that guarantee is kept.** Each proposal of a calibration draws from a
+generator fixed by its place — `SeedSequence(master, spawn_key=(population, index))`
+— rather than from one shared generator consumed in the order the work happens to
+run. Each proposal carries the seed of its own simulation. A batch asks for exactly
+as many proposals as are still wanted, so even the count of simulations does not
+follow the worker count. An ensemble derives all its seeds before any run starts.
+
+**Measured on an eight-processor machine:** the calibration of
+`examples/sir_contact_matrix.epidsl` (300 particles, 12 populations, 86 000
+simulations) takes 406 seconds on one processor and 81 seconds on eight — five
+times faster, same answer.
+
+**Finding: a pool per batch made it seven times slower.** The first version opened a
+`ProcessPoolExecutor` for each batch of proposals. On macOS a worker is spawned, not
+forked, so each one loads NumPy and SciPy afresh — about a second each, paid dozens
+of times. The same calibration took 11 seconds on one processor and 72 on four. One
+pool now lives for the whole calculation (`epidsl.parallel.Pool`), and the same run
+takes 5 seconds on four.
+
+**Compatibility.** The order in which proposals are drawn changed with this
+restructuring, so a calibration seeded the same way gives a different (equally
+valid) sample from the one version 1.14 gave.
+
+**Limits:**
+- A single simulation still runs on one processor; only independent runs are shared.
+- Workers are worth it only when there is enough work: starting them costs about a
+  second.
+- The studio offers the setting but runs the calculation in its own process, so a
+  long calibration still blocks that request.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -498,7 +536,8 @@ check from C9 and has no number yet.
 5. **Done:** release preparation (D18).
 6. **Done:** the studio (D19).
 7. **Done:** contact matrices (D20).
-8. Network ABM backend; language server; first PyPI release.
+8. **Done:** running over several processors (D21).
+9. Network ABM backend; language server; first PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM
 code-generation benchmark task suite for EpiDSL; a Bayesian calibration backend

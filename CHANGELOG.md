@@ -21,6 +21,8 @@ First version, not yet published.
 - **Backends.** Deterministic (ODE, LSODA), exact stochastic (Gillespie) and
   approximate stochastic (tau-leap with adaptive steps).
 - **Ensembles.** `--runs` writes the mean and quantiles of many stochastic runs.
+- **Several processors.** `--workers` spreads an ensemble or a calibration over
+  processes without changing its result.
 - **Observables.** `observe` statements and `incidence(A -> B)`.
 - **Calibration.** Priors on parameters and `epidsl calibrate`, by ABC-SMC.
 - **Studio.** `epidsl studio` opens a visual workbench in the browser: the model
@@ -35,4 +37,3 @@ First version, not yet published.
   expressed.
 - Observables are deterministic functions of the simulation: no measurement noise
   and no reporting delay.
-- Simulations run one after another.

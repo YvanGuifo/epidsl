@@ -30,6 +30,7 @@ MAX_POINTS = 5000
 MAX_RUNS = 2000
 MAX_PARTICLES = 5000
 MAX_POPULATIONS = 30
+MAX_WORKERS = 64
 
 #: Shown when the studio is started without a file.
 TEMPLATE = """model SIR {
@@ -176,6 +177,10 @@ def _seed(payload: dict[str, Any]) -> int | None:
     return None if payload.get("seed") is None else _count(payload, "seed", 0, 0, 2**63 - 1)
 
 
+def _workers(payload: dict[str, Any]) -> int:
+    return _count(payload, "workers", 1, 0, MAX_WORKERS)
+
+
 def _model(payload: dict[str, Any]) -> EpiModel:
     source = payload.get("source")
     if not isinstance(source, str):
@@ -232,7 +237,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             return {"ok": True, "t": result.t.tolist(), "series": _series(result)}
         if method == "ode":
             raise _Refused("several runs need a stochastic method (gillespie or tau-leap)")
-        ensemble = run_ensemble(backend, model, config, runs)
+        ensemble = run_ensemble(backend, model, config, runs, workers=_workers(payload))
         mean, low, high = ensemble.mean(), ensemble.quantile(0.025), ensemble.quantile(0.975)
         compartments = {c.name for c in model.compartments}
         series = [
@@ -272,6 +277,7 @@ def calibrate(payload: dict[str, Any]) -> dict[str, Any]:
             particles=particles,
             populations=populations,
             seed=_seed(payload),
+            workers=_workers(payload),
         )
 
         mean, low, median, high = (

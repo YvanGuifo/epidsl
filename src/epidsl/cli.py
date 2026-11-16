@@ -140,6 +140,7 @@ def _calibrate(args: argparse.Namespace) -> int:
             particles=args.particles,
             populations=args.populations,
             seed=args.seed,
+            workers=args.workers,
         )
     except (ValueError, RuntimeError) as error:
         print(f"{args.file}: {error}", file=sys.stderr)
@@ -175,7 +176,7 @@ def _run(args: argparse.Namespace) -> int:
         elif args.method == "ode":
             raise ValueError("--runs needs a stochastic method (gillespie or tau-leap)")
         else:
-            ensemble = run_ensemble(backend, model, config, args.runs)
+            ensemble = run_ensemble(backend, model, config, args.runs, workers=args.workers)
 
             def write(stream: TextIO) -> None:
                 _write_summary(ensemble, args.quantiles, stream)
@@ -226,6 +227,13 @@ def _runs(text: str) -> int:
     return value
 
 
+def _workers(text: str) -> int:
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError("must be 0 (one per processor) or more")
+    return value
+
+
 def _quantiles(text: str) -> list[float]:
     try:
         values = [float(part) for part in text.split(",")]
@@ -273,6 +281,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=float,
         help="accuracy of tau-leap, between 0 and 1; smaller is more accurate (default: 0.03)",
     )
+    run_cmd.add_argument(
+        "--workers",
+        type=_workers,
+        default=1,
+        help="processes to spread several runs over, 0 for one per processor (default: 1)",
+    )
     run_cmd.add_argument("--model", help="model to run when the file declares several")
     run_cmd.add_argument("--out", type=Path, help="CSV file to write (default: standard output)")
     run_cmd.add_argument("--strict", action="store_true", help="treat warnings as errors")
@@ -295,6 +309,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--populations", type=int, default=5, help="number of populations (default: 5)"
     )
     cal_cmd.add_argument("--seed", type=int, help="random seed, for a reproducible result")
+    cal_cmd.add_argument(
+        "--workers",
+        type=_workers,
+        default=1,
+        help="processes to spread the simulations over, 0 for one per processor (default: 1)",
+    )
     cal_cmd.add_argument("--model", help="model to calibrate when the file declares several")
     cal_cmd.add_argument("--out", type=Path, help="CSV file for the weighted posterior sample")
     cal_cmd.add_argument("--strict", action="store_true", help="treat warnings as errors")

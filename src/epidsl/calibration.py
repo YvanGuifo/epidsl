@@ -35,6 +35,7 @@ from numpy.typing import NDArray
 from epidsl.backends import Backend, BackendResult
 from epidsl.checks import errors
 from epidsl.ir import EpiModel, Prior, SimulationConfig
+from epidsl.parallel import Pool, split
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +185,15 @@ def _weighted_quantile(
     return float(np.interp(q, centres, values[order]))
 
 
+@dataclass(frozen=True, slots=True)
+class _Population:
+    """The population a new proposal is perturbed from."""
+
+    thetas: NDArray[np.float64]
+    weights: NDArray[np.float64]
+    spread: NDArray[np.float64]
+
+
 def _to_internal(prior: Prior, x: float) -> float:
     """The coordinate the sampler works in: the logarithm for a loguniform prior."""
     return math.log(x) if prior.dist == "loguniform" else x
@@ -201,6 +211,36 @@ def _internal_density(prior: Prior, u: float) -> float:
     return prior.pdf(u)
 
 
+#: A population gives up after this many proposals. A proposal that falls outside the
+#: prior costs no simulation, so only a pathological prior ever reaches this.
+MAX_PROPOSALS = 1_000_000
+
+#: One proposal: its parameters, in the sampler's coordinates, and the seed of the
+#: simulation that measures it.
+Candidate = tuple[NDArray[np.float64], int]
+
+
+def _measure(
+    job: tuple[Backend, EpiModel, list[str], list[Prior], Observations, list[Candidate]],
+) -> list[float]:
+    """One worker's share: the distance to the data of each proposal it was given."""
+    backend, model, names, priors, observations, candidates = job
+    measured = []
+    for theta, run_seed in candidates:
+        values = {
+            name: _from_internal(prior, float(u))
+            for name, prior, u in zip(names, priors, theta, strict=True)
+        }
+        try:
+            simulated = simulate_at(
+                backend, with_constants(model, values), observations.t, run_seed
+            )
+            measured.append(distance(simulated, observations))
+        except RuntimeError:
+            measured.append(math.inf)  # the simulation failed here: never accepted
+    return measured
+
+
 def calibrate(
     backend: Backend,
     model: EpiModel,
@@ -211,11 +251,16 @@ def calibrate(
     seed: int | None = None,
     keep: float = 0.5,
     max_simulations: int = 1_000_000,
+    workers: int = 1,
 ) -> CalibrationResult:
     """Estimate every ``parameter`` of ``model`` that has a prior, by ABC-SMC.
 
-    Each new tolerance is the ``keep`` quantile of the previous population's
-    distances. Raises ValueError on unusable inputs and RuntimeError when more than
+    Each new tolerance is the ``keep`` quantile of the previous population's distances.
+    Within a population the proposals are independent, so ``workers`` spreads them over
+    that many processes — 0 meaning one per processor — without changing the result:
+    each proposal draws from a generator fixed by its place, not by the order run.
+
+    Raises ValueError on unusable inputs and RuntimeError when more than
     ``max_simulations`` simulations would be needed.
     """
     problems = errors(model)
@@ -241,74 +286,101 @@ def calibrate(
 
     names = [k.name for k in targets]
     priors: list[Prior] = [k.prior for k in targets if k.prior is not None]
-    rng = np.random.default_rng(seed)
+    master = np.random.SeedSequence(seed)
     simulations = 0
-
-    def simulate(theta: NDArray[np.float64]) -> float:
-        nonlocal simulations
-        if simulations == max_simulations:
-            raise RuntimeError(
-                f"calibration of model {model.name} needs more than {max_simulations} simulations"
-            )
-        simulations += 1
-        run_seed = int(rng.integers(0, 2**63))
-        values = {
-            name: _from_internal(prior, float(u))
-            for name, prior, u in zip(names, priors, theta, strict=True)
-        }
-        candidate = with_constants(model, values)
-        try:
-            return distance(simulate_at(backend, candidate, observations.t, run_seed), observations)
-        except RuntimeError:
-            return math.inf  # the simulation failed for these values: never accepted
 
     def prior_density(theta: NDArray[np.float64]) -> float:
         return math.prod(
             _internal_density(prior, float(u)) for prior, u in zip(priors, theta, strict=True)
         )
 
-    # First population: straight from the prior, keeping every simulation that ran.
-    thetas = np.empty((particles, len(names)), dtype=np.float64)
-    distances = np.empty(particles, dtype=np.float64)
-    accepted = 0
-    while accepted < particles:
-        theta = np.array(
-            [_to_internal(prior, prior.sample(rng)) for prior in priors], dtype=np.float64
+    def propose(population: int, index: int, previous: _Population | None) -> Candidate | None:
+        """The proposal at ``index``, or None when it falls outside the prior.
+
+        Its generator depends on where the proposal sits, so neither the number of
+        workers nor the order the proposals are measured in can reach the result.
+        """
+        rng = np.random.default_rng(
+            np.random.SeedSequence(master.entropy, spawn_key=(population, index))
         )
-        d = simulate(theta)
-        if math.isfinite(d):
-            thetas[accepted], distances[accepted] = theta, d
-            accepted += 1
-    weights = np.full(particles, 1.0 / particles)
-    tolerances = [math.inf]
+        if previous is None:
+            theta = np.array(
+                [_to_internal(prior, prior.sample(rng)) for prior in priors], dtype=np.float64
+            )
+        else:
+            origin = previous.thetas[rng.choice(particles, p=previous.weights)]
+            theta = origin + previous.spread * rng.standard_normal(len(names))
+            if prior_density(theta) == 0.0:
+                return None
+        return theta, int(rng.integers(0, 2**63))
 
-    for _ in range(1, populations):
-        tolerance = float(np.quantile(distances, keep))
-        mean = weights @ thetas
-        variance = weights @ (thetas - mean) ** 2
-        # Perturbation with twice the weighted variance of the current population.
-        spread = np.sqrt(2.0 * np.maximum(variance, 1e-300))
+    def measure(candidates: list[Candidate], pool: Pool) -> list[float]:
+        nonlocal simulations
+        if simulations + len(candidates) > max_simulations:
+            raise RuntimeError(
+                f"calibration of model {model.name} needs more than {max_simulations} simulations"
+            )
+        simulations += len(candidates)
+        jobs = [
+            (backend, model, names, priors, observations, chunk)
+            for chunk in split(candidates, pool.workers * 4)
+        ]
+        return pool.map(_measure, jobs)
 
-        new_thetas = np.empty_like(thetas)
-        new_distances = np.empty_like(distances)
-        new_weights = np.empty_like(weights)
-        accepted = 0
-        while accepted < particles:
-            origin = thetas[rng.choice(particles, p=weights)]
-            theta = origin + spread * rng.standard_normal(len(names))
-            density = prior_density(theta)
-            if density == 0.0:
-                continue
-            d = simulate(theta)
-            if d > tolerance:
-                continue
-            kernel = np.exp(-0.5 * (((theta - thetas) / spread) ** 2).sum(axis=1))
-            new_thetas[accepted], new_distances[accepted] = theta, d
-            new_weights[accepted] = density / float(weights @ kernel)
-            accepted += 1
-        thetas, distances = new_thetas, new_distances
-        weights = new_weights / new_weights.sum()
-        tolerances.append(tolerance)
+    def fill(
+        population: int, previous: _Population | None, tolerance: float, pool: Pool
+    ) -> list[tuple[NDArray[np.float64], float]]:
+        """Measure proposals in batches until ``particles`` of them are close enough."""
+        taken: list[tuple[NDArray[np.float64], float]] = []
+        index = 0
+        while len(taken) < particles:
+            batch: list[Candidate] = []
+            # Exactly as many as are still wanted, so that the count of simulations,
+            # like the particles themselves, does not depend on how many workers run.
+            while len(batch) < particles - len(taken):
+                if index >= MAX_PROPOSALS:
+                    raise RuntimeError(
+                        f"calibration of model {model.name} made {MAX_PROPOSALS} proposals "
+                        "without filling a population; its priors leave almost no room"
+                    )
+                candidate = propose(population, index, previous)
+                index += 1
+                if candidate is not None:
+                    batch.append(candidate)
+            for (theta, _), measured in zip(batch, measure(batch, pool), strict=True):
+                if len(taken) == particles:
+                    break
+                if math.isfinite(measured) and measured <= tolerance:
+                    taken.append((theta, measured))
+        return taken
+
+    with Pool(workers) as pool:
+        # First population: straight from the prior, keeping every simulation that ran.
+        taken = fill(0, None, math.inf, pool)
+        thetas = np.array([theta for theta, _ in taken])
+        distances = np.array([measured for _, measured in taken])
+        weights = np.full(particles, 1.0 / particles)
+        tolerances = [math.inf]
+
+        for population in range(1, populations):
+            tolerance = float(np.quantile(distances, keep))
+            mean = weights @ thetas
+            variance = weights @ (thetas - mean) ** 2
+            # Perturbation with twice the weighted variance of the current population.
+            spread = np.sqrt(2.0 * np.maximum(variance, 1e-300))
+            taken = fill(population, _Population(thetas, weights, spread), tolerance, pool)
+
+            new_weights = np.array(
+                [
+                    prior_density(theta)
+                    / float(weights @ np.exp(-0.5 * (((theta - thetas) / spread) ** 2).sum(axis=1)))
+                    for theta, _ in taken
+                ]
+            )
+            thetas = np.array([theta for theta, _ in taken])
+            distances = np.array([measured for _, measured in taken])
+            weights = new_weights / new_weights.sum()
+            tolerances.append(tolerance)
 
     for j, prior in enumerate(priors):
         thetas[:, j] = [_from_internal(prior, float(u)) for u in thetas[:, j]]

@@ -216,6 +216,25 @@ More populations or particles give a sharper estimate and take longer. A low
 effective sample size relative to `--particles` means the estimate rests on few
 particles: increase `--particles`.
 
+### Use several processors
+
+A calibration runs thousands of independent simulations, and an ensemble runs many.
+`--workers` spreads them over that many processes, and `--workers 0` uses one per
+processor:
+
+```bash
+uv run epidsl calibrate examples/sir_contact_matrix.epidsl --model ContactMatrix --data examples/contact_weekly_cases.csv --particles 300 --populations 12 --seed 1 --workers 0
+```
+
+That calibration takes 406 seconds on one processor and 81 seconds on eight — five
+times faster, for the same answer. The number of workers changes how long a run
+takes and nothing else: the seeds and the order of the work are fixed before any of
+it is handed out, so a seeded run gives the same particles, the same tolerances and
+the same count of simulations whatever `--workers` is set to.
+
+Workers only pay off when there is enough work for them: starting them costs about
+a second, since each loads NumPy and SciPy afresh.
+
 ## Compose models
 
 A `compose` block builds the product of several models. Each model is read as an
@@ -451,8 +470,8 @@ trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 |---------|---------|
 | `epidsl check FILE` | `--strict` |
 | `epidsl studio [FILE]` | `--port N` (default 8642, or a free port), `--no-browser` |
-| `epidsl calibrate FILE` | `--data CSV` (required), `--method ode\|gillespie\|tau-leap` (default `ode`), `--particles N` (default 200), `--populations N` (default 5), `--seed N`, `--model NAME`, `--out PATH`, `--strict` |
-| `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--runs K`, `--quantiles Q1,Q2,...` (default `0.025,0.975`), `--epsilon E` (tau-leap only, default 0.03), `--model NAME`, `--out PATH`, `--strict` |
+| `epidsl calibrate FILE` | `--data CSV` (required), `--method ode\|gillespie\|tau-leap` (default `ode`), `--particles N` (default 200), `--populations N` (default 5), `--seed N`, `--workers N`, `--model NAME`, `--out PATH`, `--strict` |
+| `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--runs K`, `--workers N`, `--quantiles Q1,Q2,...` (default `0.025,0.975`), `--epsilon E` (tau-leap only, default 0.03), `--model NAME`, `--out PATH`, `--strict` |
 
 All commands exit with status 0 on success and 1 on any error.
 
@@ -494,7 +513,8 @@ Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 5. **Done:** release preparation (package builds and installs cleanly; not published).
 6. **Done:** the studio, a visual workbench in the browser.
 7. **Done:** contact matrices.
-8. Network-based agent backend, language server, first PyPI release.
+8. **Done:** running simulations over several processors.
+9. Network-based agent backend, language server, first PyPI release.
 
 Design rationale, and how each method differs from the paper it follows, are
 recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md). References are in

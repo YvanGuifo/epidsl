@@ -446,6 +446,7 @@ function runPayload() {
     payload.runs = Number($("runs").value);
     if ($("seed").value !== "") payload.seed = Number($("seed").value);
   }
+  payload.workers = Number($("workers").value);
   return payload;
 }
 
@@ -628,6 +629,7 @@ async function calibrate() {
     data: $("data").value,
     particles: Number($("particles").value),
     populations: Number($("populations").value),
+    workers: Number($("workers").value),
   };
   if ($("seed").value !== "") payload.seed = Number($("seed").value);
   $("calibrate").disabled = true;
