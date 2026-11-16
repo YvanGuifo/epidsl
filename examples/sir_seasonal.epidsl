@@ -1,0 +1,20 @@
+-- Seasonal transmission with waning immunity: recurrent waves.
+-- The transmission rate swings by 40% around its mean over a year.
+
+model Seasonal {
+    semantics: [ODE, Gillespie, TauLeap]
+
+    compartment S = 9900, I = 100, R = 0
+
+    parameter beta = 0.25 prior uniform(0.05, 1) [1/day]
+    rate gamma = 0.1 [1/day]
+    rate waning = 0.01 [1/day]       -- loss of immunity
+    rate swing = 0.4 [1]             -- relative amplitude of the season
+    rate year = 365 [day]
+
+    flow S -> I : beta * (1 + swing * cos(6.283185307 * t / year)) * S * I / N
+    flow I -> R : gamma * I
+    flow R -> S : waning * R
+
+    observe cases = incidence(S -> I)
+}

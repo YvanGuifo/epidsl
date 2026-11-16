@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.15
+**Version:** 1.16
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -157,8 +157,7 @@ Each flow is a jump of one individual whose propensity is the flow's expression.
   whose independent initial distribution is fractional is therefore refused.
 - A flow has propensity zero while its source is empty, whatever its expression.
 - A negative or undefined propensity stops the run with an error.
-- Rates that use `t` are refused: the direct method assumes rates are constant
-  between jumps. Supporting them needs thinning or a modified next-reaction method.
+- Rates that use `t`: see D22.
 - An event budget (10 million by default) stops models whose rates grow without limit.
 
 **Validation:** the pure death process against its binomial law, and the
@@ -198,9 +197,8 @@ single exact Gillespie steps when a leap would cover fewer than 10 expected even
   discarded and retried with half the step.
 - **Output.** Steps are cut at output times, so reported states are states of the
   simulated process, not interpolations.
-- **Time-dependent rates** are refused, as in the Gillespie backend: a rate is
-  frozen over a step, and a first version that allowed `t` overestimated a decaying
-  inflow by 5%.
+- **Time-dependent rates** were refused at first — freezing the rate over a step
+  overestimated a decaying inflow by 5% — and are now handled as described in D22.
 
 **Validation:** the mean of 30 trajectories converges to the ODE as `epsilon`
 shrinks (measured gap 0.6% of the population at 0.03, 0.2% at 0.01, against 0.1%
@@ -519,6 +517,42 @@ valid) sample from the one version 1.14 gave.
 - The studio offers the setting but runs the calculation in its own process, so a
   long calibration still blocks that request.
 
+### D22 — Rates that depend on time, in the stochastic backends (2026-11-16)
+
+**Decision:** a rate may name `t` under every semantics. This replaces the refusal
+recorded in D11 and D12.
+
+- **Gillespie stays exact.** Between two jumps the state is fixed, so the total rate
+  is a known function of time. The next jump falls where its integral reaches a draw
+  from the unit exponential law; the integral is computed by adaptive quadrature and
+  inverted by root finding. What is left of the draw is carried across output times.
+  An error raised while integrating is kept and reported afterwards, never raised
+  through the integrator (see D18).
+- **Tau-leap.** A leap is shortened until time alone moves the rates by less than
+  `epsilon`, and fires at the average of the rates at its two ends. Its exact steps
+  use the same integration as Gillespie. A total rate of zero no longer ends the
+  run when a rate may wake up later.
+- **Models without `t` take the previous code path, draw for draw**; a test pins
+  seeded results from before this change.
+
+**Validation:** the Poisson law of a decaying inflow and the binomial law of a
+seasonal death rate, in both backends; a rate that is zero until a date and then
+grows; many output times between jumps; a seasonally forced epidemic against the
+ODE in both backends; and the case that failed before (D12), a fast-decaying inflow
+in tau-leap, now within 0.5% where freezing the rate gave 5%. Eight deliberate
+faults were each caught, three of them only after two tests were added.
+
+**Cost, measured on `examples/sir_seasonal.epidsl` (120 days, 30 000 events):**
+Gillespie takes 11 seconds, against 0.15 seconds for the same model without a
+season — about 75 times more per event, since every jump integrates the rate.
+Tau-leap takes 0.15 seconds.
+
+**Limits:**
+- The integration assumes rates the quadrature can follow; a rate with a jump in
+  time (there is no `if` yet, but `max` gives kinks) is handled, at more cost.
+- The exact method could be made several times faster with a cheaper inversion;
+  not done.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -530,13 +564,13 @@ check from C9 and has no number yet.
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend (SciPy LSODA), CLI.
 2. **Done:** `compose`, `sync`, stratified constants and entry states (D10, D14).
    Next for composition: contact matrices (OQ3).
-3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Ensembles of runs (D13). Open:
-   time-dependent rates in the stochastic backends.
+3. **Done:** Gillespie SSA (D11) and tau-leap (D12). Ensembles of runs (D13).
 4. **Done:** calibration by ABC-SMC (D15), observables and incidence (D16).
 5. **Done:** release preparation (D18).
 6. **Done:** the studio (D19).
 7. **Done:** contact matrices (D20).
-8. **Done:** running over several processors (D21).
+8. **Done:** running over several processors (D21); time-dependent rates in the
+   stochastic backends (D22).
 9. Network ABM backend; language server; first PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM

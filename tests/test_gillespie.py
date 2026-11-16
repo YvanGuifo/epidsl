@@ -128,11 +128,6 @@ def test_composed_model_runs() -> None:
             "whole number",
         ),
         (
-            "model M { semantics: [Gillespie] compartment X = 5  flow X -> : X * exp(-t) }",
-            ValueError,
-            "time-dependent",
-        ),
-        (
             "model M { semantics: [Gillespie] compartment X = 5  flow X -> : -1 * X }",
             RuntimeError,
             "negative",

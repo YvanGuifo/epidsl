@@ -5,6 +5,9 @@ flow a Poisson number of times at once, with rates frozen at the start of the st
 When leaping would not save work (few individuals involved), single exact Gillespie
 steps are taken instead.
 
+When a rate names ``t``, a leap is also shortened until time alone moves the rates by
+less than ``epsilon``, and it fires at the average of the rates at its two ends.
+
 The step selection follows Cao, Gillespie and Petzold (2006, J. Chem. Phys. 124,
 044109) with their factor ``g`` set to 1, and adds a bound on the fraction leaving
 each compartment in place of their separate treatment of critical reactions. See
@@ -18,10 +21,11 @@ from numpy.typing import NDArray
 
 from epidsl.backends import BackendResult, compile_model, observe
 from epidsl.backends._stochastic import (
+    TimedJumps,
     choose_flow,
     evaluate_propensities,
-    require_time_independent_rates,
     require_whole_initial_values,
+    uses_time,
 )
 from epidsl.ir import EpiModel, Semantics, SimulationConfig
 
@@ -56,7 +60,7 @@ class TauLeapBackend:
     def run(self, model: EpiModel, config: SimulationConfig) -> BackendResult:
         compiled = compile_model(model, Semantics.TAU_LEAP)
         require_whole_initial_values(model, "TauLeap")
-        require_time_independent_rates(model, "TauLeap")
+        jumps = TimedJumps(compiled, model.name, "TauLeap") if uses_time(model) else None
 
         n_compartments, n_flows = len(compiled.names), len(compiled.flows)
         change = np.zeros((n_compartments, n_flows), dtype=np.float64)
@@ -76,6 +80,7 @@ class TauLeapBackend:
         moved_output = np.empty((len(grid), len(tracked)), dtype=np.float64)
         state = compiled.initial.copy()
         propensities = np.zeros(n_flows, dtype=np.float64)
+        later = np.zeros(n_flows, dtype=np.float64)
         t = float(grid[0])
         recorded = 0
         leaps = 0
@@ -90,7 +95,7 @@ class TauLeapBackend:
 
             evaluate_propensities(compiled, state, t, propensities, model.name, "TauLeap")
             total = float(propensities.sum())
-            if total == 0:
+            if total == 0 and jumps is None:
                 # Nothing can happen any more: the state is final.
                 output[recorded:] = state
                 moved_output[recorded:] = moved
@@ -103,6 +108,23 @@ class TauLeapBackend:
 
             horizon = float(grid[recorded] - t)
             tau = self._step(state, propensities, change, outflow)
+
+            if jumps is not None and (total == 0 or tau < self.exact_threshold / total):
+                # One exact step, with the waiting time found by integrating the rate.
+                ahead = float(grid[recorded])
+                owed = rng.exponential(1.0)
+                if jumps.mass(state, t, ahead) < owed:
+                    t = ahead  # no jump before the next output time
+                    continue
+                t = jumps.reach(state, t, ahead, owed)
+                evaluate_propensities(compiled, state, t, propensities, model.name, "TauLeap")
+                total = float(propensities.sum())
+                if total > 0:
+                    chosen = choose_flow(propensities, total, rng)
+                    state += change[:, chosen]
+                    moved[tracked == chosen] += 1
+                    exact_steps += 1
+                continue
 
             if tau < self.exact_threshold / total:
                 wait = rng.exponential(1.0 / total)
@@ -118,8 +140,19 @@ class TauLeapBackend:
 
             tau = min(tau, horizon)
             reaches_grid = tau == horizon
+            rates = propensities
+            if jumps is not None:
+                # Shorten the leap until time alone moves the rates by less than epsilon,
+                # then use their average over the leap rather than their starting value.
+                for _ in range(_MAX_HALVINGS):
+                    evaluate_propensities(compiled, state, t + tau, later, model.name, "TauLeap")
+                    if float(np.abs(later - propensities).sum()) <= self.epsilon * total:
+                        break
+                    tau /= 2
+                    reaches_grid = False
+                rates = 0.5 * (propensities + later)
             for _ in range(_MAX_HALVINGS):
-                firings = rng.poisson(propensities * tau)
+                firings = rng.poisson(rates * tau)
                 candidate = state + change @ firings
                 if candidate.min() >= 0:
                     break

@@ -108,9 +108,25 @@ uv run epidsl run examples/sir.epidsl --t-end 160 --method gillespie --runs 200 
 With `--runs`, `--seed` fixes the whole set of runs. `--runs` is refused with the
 ODE method, which always gives the same trajectory.
 
-Both methods require whole-number initial values and rates that do not use `t`. A
-flow never fires from an empty compartment, and a rate that evaluates to a negative
-number stops the run with an error.
+Both methods require whole-number initial values. A flow never fires from an empty
+compartment, and a rate that evaluates to a negative number stops the run with an
+error.
+
+A rate may use `t`, for a season or a dated change:
+
+```
+flow S -> I : beta * (1 + swing * cos(6.283185307 * t / year)) * S * I / N
+```
+
+```bash
+uv run epidsl run examples/sir_seasonal.epidsl --t-end 730 --method tau-leap --seed 1
+```
+
+Gillespie stays exact with such a rate, by integrating it to find each waiting time,
+but that costs far more per event: on the example above, 11 seconds for 30 000
+events against 0.15 seconds for the same model without a season. Tau-leap handles it
+at its usual speed (0.15 seconds here) and is the practical choice beyond a few
+thousand individuals.
 
 Tau-leap chooses its own step sizes, following Cao, Gillespie and Petzold (2006),
 and switches to exact steps while few individuals are involved. Its error shrinks with its accuracy parameter `epsilon`
@@ -513,7 +529,8 @@ Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 5. **Done:** release preparation (package builds and installs cleanly; not published).
 6. **Done:** the studio, a visual workbench in the browser.
 7. **Done:** contact matrices.
-8. **Done:** running simulations over several processors.
+8. **Done:** running simulations over several processors; rates that depend on time
+   in the stochastic methods.
 9. Network-based agent backend, language server, first PyPI release.
 
 Design rationale, and how each method differs from the paper it follows, are

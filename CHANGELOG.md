@@ -32,7 +32,7 @@ First version, not yet published.
 
 ### Known limits
 
-- Rates that depend on time are refused by the stochastic backends.
+- Exact stochastic simulation is much slower when a rate depends on time.
 - A contact matrix (a rate that depends on the strata of both parties) cannot be
   expressed.
 - Observables are deterministic functions of the simulation: no measurement noise
