@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+import webbrowser
 from collections.abc import Sequence
 from importlib.metadata import version
 from pathlib import Path
@@ -20,6 +21,7 @@ from epidsl.ensemble import EnsembleResult, run_ensemble
 from epidsl.errors import EpiError
 from epidsl.ir import EpiModel, SimulationConfig
 from epidsl.parser import parse
+from epidsl.studio.server import make_server
 
 _METHODS = ("ode", "gillespie", "tau-leap")
 
@@ -189,6 +191,27 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _studio(args: argparse.Namespace) -> int:
+    if args.file is not None and not args.file.is_file():
+        print(f"{args.file}: no such file", file=sys.stderr)
+        return 1
+    try:
+        server = make_server(args.file, args.port)
+    except OSError as error:
+        print(f"cannot listen on port {args.port}: {error.strerror}", file=sys.stderr)
+        return 1
+    print(f"EpiDSL Studio is running at {server.url} (Ctrl+C to stop)", flush=True)
+    if not args.no_browser:
+        webbrowser.open(server.url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
 def _points(text: str) -> int:
     value = int(text)
     if value < 2:
@@ -276,6 +299,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     cal_cmd.add_argument("--out", type=Path, help="CSV file for the weighted posterior sample")
     cal_cmd.add_argument("--strict", action="store_true", help="treat warnings as errors")
     cal_cmd.set_defaults(handler=_calibrate)
+
+    studio_cmd = commands.add_parser(
+        "studio", help="open the visual workbench for a model in the browser"
+    )
+    studio_cmd.add_argument("file", type=Path, nargs="?", help="model file (default: a template)")
+    studio_cmd.add_argument(
+        "--port", type=int, help="local port (default: 8642, or a free one if it is taken)"
+    )
+    studio_cmd.add_argument(
+        "--no-browser", action="store_true", help="do not open the browser automatically"
+    )
+    studio_cmd.set_defaults(handler=_studio)
 
     args = parser.parse_args(argv)
     handler = args.handler

@@ -216,6 +216,7 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
         flows=tuple(flows),
         semantics=semantics,
         observables=tuple(observables),
+        parts=tuple((part.name, tuple(c.name for c in part.compartments)) for part in parts),
         line=composition.line,
         column=composition.column,
     )

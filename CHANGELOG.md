@@ -23,7 +23,10 @@ First version, not yet published.
 - **Ensembles.** `--runs` writes the mean and quantiles of many stochastic runs.
 - **Observables.** `observe` statements and `incidence(A -> B)`.
 - **Calibration.** Priors on parameters and `epidsl calibrate`, by ABC-SMC.
-- **Command line.** `epidsl check`, `epidsl run`, `epidsl calibrate`.
+- **Studio.** `epidsl studio` opens a visual workbench in the browser: the model
+  as a grid of compartments and flows linked to the source, live diagnostics,
+  simulation and calibration.
+- **Command line.** `epidsl check`, `epidsl run`, `epidsl calibrate`, `epidsl studio`.
 
 ### Known limits
 

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EpiDSL Studio</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bar">
+  <span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></span>
+  <h1>EpiDSL Studio</h1>
+  <span id="file" class="file"></span>
+  <span id="status" class="status" role="status"></span>
+  <span class="grow"></span>
+  <button id="save" class="btn" type="button" title="Save the file (Ctrl+S)">Save</button>
+</header>
+
+<main class="work">
+  <section class="pane source" aria-label="Source">
+    <div class="head"><h2>Source</h2></div>
+    <div class="editor">
+      <div id="gutter" class="gutter" aria-hidden="true"></div>
+      <div class="code">
+        <div id="hl" class="hl" hidden></div>
+        <textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off"
+          wrap="off" aria-label="Model source"></textarea>
+      </div>
+    </div>
+    <ul id="diags" class="diags" aria-label="Problems"></ul>
+  </section>
+
+  <section class="pane model" aria-label="Model">
+    <div class="head">
+      <h2>Model</h2>
+      <div id="tabs" class="tabs" role="tablist" aria-label="Models in this file"></div>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div id="legend" class="legend"></div>
+    <div id="caption" class="caption"></div>
+    <div id="facts" class="facts"></div>
+  </section>
+
+  <section class="pane results" aria-label="Simulation">
+    <div class="head">
+      <h2>Simulation</h2>
+      <div class="seg" id="methods" role="group" aria-label="Method">
+        <button type="button" data-method="ode" aria-pressed="true">ODE</button>
+        <button type="button" data-method="gillespie" aria-pressed="false">Gillespie</button>
+        <button type="button" data-method="tau-leap" aria-pressed="false">Tau-leap</button>
+      </div>
+    </div>
+    <div class="controls">
+      <label>Until <input id="t_end" type="number" min="0" step="any" value="160"></label>
+      <label title="Number of output times. An incidence is counted per interval between them.">Points <input id="points" type="number" min="2" max="5000" step="1" value="161"></label>
+      <label>Runs <input id="runs" type="number" min="1" max="2000" step="1" value="1"></label>
+      <label>Seed <input id="seed" type="number" min="0" step="1" value="1"></label>
+      <button id="run" class="btn primary" type="button" title="Run (Ctrl+Enter)">Run</button>
+    </div>
+    <div id="chart" class="chart"></div>
+    <div id="readout" class="readout"></div>
+    <div id="series" class="chips"></div>
+    <p id="runmsg" class="msg" role="status"></p>
+  </section>
+
+  <section class="pane calib" aria-label="Calibration">
+    <div class="head"><h2>Calibration</h2></div>
+    <p class="hint">Paste observations as CSV: a column <code>t</code>, then compartments or observables.</p>
+    <textarea id="data" class="data" spellcheck="false" wrap="off" aria-label="Observations"
+      placeholder="t,I&#10;0,10&#10;10,69&#10;20,200"></textarea>
+    <div class="controls">
+      <label class="filebtn btn">Load CSV<input id="datafile" type="file" accept=".csv,text/csv,text/plain"></label>
+      <label>Particles <input id="particles" type="number" min="2" max="5000" step="1" value="200"></label>
+      <label>Populations <input id="populations" type="number" min="1" max="30" step="1" value="5"></label>
+      <button id="calibrate" class="btn primary" type="button">Calibrate</button>
+    </div>
+    <div id="posterior" class="posterior"></div>
+    <p id="calmsg" class="msg" role="status"></p>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

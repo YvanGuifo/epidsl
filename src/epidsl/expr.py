@@ -97,3 +97,45 @@ def compile_expr(
             compiled = [compile_expr(arg, index, constants, incidence) for arg in args]
             return lambda y, t: float(implementation(*(arg(y, t) for arg in compiled)))
     raise TypeError(f"not an expression: {expr!r}")
+
+
+_PRECEDENCE = {"+": 1, "-": 1, "*": 2, "/": 2, "^": 4}
+_NEGATION = 3
+
+
+def _precedence(expr: Expr) -> int:
+    if isinstance(expr, BinOp):
+        return _PRECEDENCE[expr.op]
+    return _NEGATION if isinstance(expr, Neg) else 5
+
+
+def format_expr(expr: Expr) -> str:
+    """Write ``expr`` back as source text, with only the parentheses it needs."""
+
+    def wrapped(child: Expr, needs: bool) -> str:
+        text = format_expr(child)
+        return f"({text})" if needs else text
+
+    match expr:
+        case Num(value):
+            return f"{value:g}"
+        case Sym(name):
+            return name
+        case Neg(operand):
+            return "-" + wrapped(operand, _precedence(operand) < _NEGATION)
+        case BinOp(op, left, right):
+            mine = _PRECEDENCE[op]
+            theirs = _precedence(left), _precedence(right)
+            if op == "^":
+                left_needs = theirs[0] <= mine
+                right_needs = theirs[1] < mine and not isinstance(right, Neg)
+            else:
+                left_needs = theirs[0] < mine
+                right_needs = theirs[1] < mine or (theirs[1] == mine and op in "-/")
+            return f"{wrapped(left, left_needs)} {op} {wrapped(right, right_needs)}"
+        case Call(func, args):
+            return f"{func}({', '.join(format_expr(arg) for arg in args)})"
+        case Incidence(pairs):
+            moves = ", ".join(" ".join(filter(None, (a, "->", b))) for a, b in pairs)
+            return f"incidence({moves})"
+    raise TypeError(f"not an expression: {expr!r}")

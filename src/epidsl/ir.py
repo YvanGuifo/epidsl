@@ -169,6 +169,9 @@ class EpiModel:
     flows: tuple[Flow, ...]
     semantics: tuple[Semantics, ...] = (Semantics.ODE,)
     observables: tuple[Observable, ...] = ()
+    #: For a composed model: each component's name and compartments, in order. Its
+    #: compartments are then the product of these, in the same order.
+    parts: tuple[tuple[str, tuple[str, ...]], ...] = ()
     line: int = _pos()
     column: int = _pos()
 

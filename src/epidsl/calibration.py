@@ -24,6 +24,7 @@ of a range that spans several orders of magnitude, and the weights would degener
 from __future__ import annotations
 
 import csv
+import io
 import math
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -46,8 +47,12 @@ class Observations:
 
 def read_observations(path: Path) -> Observations:
     """Read a CSV file whose first column is ``t`` and whose others are compartments."""
-    with path.open(newline="", encoding="utf-8") as stream:
-        rows = list(csv.reader(stream))
+    return parse_observations(path.read_text(encoding="utf-8"))
+
+
+def parse_observations(text: str) -> Observations:
+    """Read CSV text whose first column is ``t`` and whose others are compartments."""
+    rows = list(csv.reader(io.StringIO(text, newline="")))
     if not rows or not rows[0] or rows[0][0].strip() != "t":
         raise ValueError("the first column must be 't'")
     names = [name.strip() for name in rows[0][1:]]

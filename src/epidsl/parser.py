@@ -136,7 +136,8 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             flows=tuple(flows),
             semantics=semantics or (Semantics.ODE,),
             observables=tuple(observables),
-            **_at(name),
+            line=name.line or 0,
+            column=name.column or 0,
         )
 
     def compartments(self, *items: Compartment) -> list[Compartment]:

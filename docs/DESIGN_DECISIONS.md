@@ -1,6 +1,6 @@
 # EpiDSL — Design Decisions
 
-**Version:** 1.12
+**Version:** 1.13
 **Date:** 2026-11-15
 **Author:** Dr. A. Yvan GUIFO FODJO (EFREI Paris / EFREI Research Lab)
 **Status:** Adopted — implemented: grammar, IR, checks C1–C8, ODE backend, CLI, `compose` with `sync`, Gillespie and tau-leap backends
@@ -394,6 +394,49 @@ afterwards. The declared lower bound on SciPy had never been tested before.
 - Nothing is published, and CI has never run: both need a remote repository.
 - No version has been tagged; the changelog section is still "Unreleased".
 
+### D19 — The studio (2026-11-16)
+
+**Decision:** a visual workbench, `epidsl studio FILE`, served on this machine and
+shown in the browser. Its centrepiece is the **product grid**: the compartments of a
+composed model laid out with the first model in columns and the others in rows, the
+flows drawn as arrows, and every arrow linked to the line of source that produced it.
+
+**What sets it apart.** Composition is the contribution of this project, so it is the
+thing on screen: one flow written in a model appears as one arrow per stratum, a
+constant stratified with `by` shows as different rates on parallel arrows, and a
+`sync` rule as a dashed diagonal. The text file remains the model; the studio edits
+and saves that file and never stores a model of its own, so a model stays readable,
+diffable and writable by a program.
+
+**How it is built.**
+- Standard library HTTP server and a page in plain HTML, CSS and JavaScript: no new
+  dependency, no build step, nothing fetched from the internet.
+- `epidsl.studio.api` holds the logic as plain functions (`analyze`, `run`,
+  `calibrate`) and is tested without a browser. A composed model now records its
+  components (`EpiModel.parts`) so that the grid can be laid out.
+- The server listens on 127.0.0.1 only and refuses a request whose `Host` is not
+  itself or whose `Origin` is another site, so a page open elsewhere in the browser
+  cannot drive it. It writes one file only: the one it was started with.
+
+**Finding while building it.** The first version drew the calibrated model on a fine
+time grid over weekly case counts: the curve peaked near 60 where the data reached
+1000, because an incidence is a count per output interval. The fit is now reported
+at the observation times, a test compares its peak with the data's, and a manual run
+removes the observations from the chart, since its time grid differs.
+
+**Verified:** 43 tests on the API and the server; twelve deliberate faults each
+caught. The page itself was checked by hand in a browser — loading, the arrow-to-line
+link, live errors, ODE and Gillespie runs, calibration, dark mode, a narrow screen —
+and has no automated test.
+
+**Limits:**
+- No automated test of the page's JavaScript.
+- The editor is a plain text area: no syntax colouring or completion.
+- A calibration blocks its request until it ends, with no progress or cancel.
+- With three or more models the rows are combinations of the later models; there is
+  no way yet to choose which model goes where.
+- The studio's wording is in English only.
+
 Planned: C9 (mass conservation) and C10 (requested semantics not declared; today
 this is a run-time refusal by the backend). Dimensional consistency is a separate
 check from C9 and has no number yet.
@@ -409,7 +452,8 @@ check from C9 and has no number yet.
    time-dependent rates in the stochastic backends.
 4. **Done:** calibration by ABC-SMC (D15), observables and incidence (D16).
 5. **Done:** release preparation (D18).
-6. Network ABM backend; language server; first PyPI release.
+6. **Done:** the studio (D19).
+7. Contact matrices; network ABM backend; language server; first PyPI release.
 
 Research follow-ups carried over from the October–November 2026 watch: an LLM
 code-generation benchmark task suite for EpiDSL; a Bayesian calibration backend

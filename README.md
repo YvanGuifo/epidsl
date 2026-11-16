@@ -5,8 +5,8 @@ compartments and flows, checked statically, and compiled to a typed intermediate
 representation that simulation backends consume.
 
 **Status:** early development. Deterministic (ODE) and stochastic (Gillespie,
-tau-leap) simulation, model composition and calibration work end to end (see
-[Roadmap](#roadmap)).
+tau-leap) simulation, model composition, calibration and a visual workbench work
+end to end (see [Roadmap](#roadmap)).
 
 ## Install
 
@@ -47,6 +47,39 @@ uv run epidsl run examples/sir.epidsl --t-end 160 --out sir.csv
 
 `run` writes one CSV row per output time, with a column `t` and one column per
 compartment. Without `--out` the CSV goes to standard output.
+
+## Open the studio
+
+The studio shows a model, its simulations and its calibration in the browser. The
+text file stays the model: the studio reads it, checks it as you type, and saves it
+back.
+
+```bash
+uv run epidsl studio examples/sir_age_structured.epidsl
+```
+
+It prints a local address and opens it. Stop it with Ctrl+C. Started without a
+file, it opens a small template that cannot be saved.
+
+- **Source.** Edit the model on the left. Lines with a problem are marked, and the
+  list below explains each one; click an entry to jump to its line.
+- **Model.** Compartments are laid out as a grid. For a composed model the first
+  model gives the columns and the others the rows, so each cell is one combination
+  of states. Arrows are the flows, coloured by the model they come from; a dashed
+  arrow is a synchronised transition. Select an arrow to read its rate and to
+  highlight the line of source that produced it. One line can produce several
+  arrows: that is composition made visible.
+- **Simulation.** Choose a method the model declares, then **Run** (Ctrl+Enter).
+  ODE runs again by itself as you edit. With a stochastic method and several runs,
+  the chart shows the mean and a 95% band. Click a name under the chart to show or
+  hide it; observables are dashed and hidden at first.
+- **Calibration.** Paste or load the observations, then **Calibrate**. Each
+  parameter is shown on a track that spans its prior, with its 95% interval and
+  median, and the chart shows the model at the estimated values with the data.
+
+The studio listens on this computer only, loads nothing from the internet, and
+answers only its own page. It uses port 8642, or a free one if that is taken;
+`--port` chooses one and `--no-browser` does not open the browser.
 
 ## Run a stochastic simulation
 
@@ -375,6 +408,7 @@ trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 | Command | Options |
 |---------|---------|
 | `epidsl check FILE` | `--strict` |
+| `epidsl studio [FILE]` | `--port N` (default 8642, or a free port), `--no-browser` |
 | `epidsl calibrate FILE` | `--data CSV` (required), `--method ode\|gillespie\|tau-leap` (default `ode`), `--particles N` (default 200), `--populations N` (default 5), `--seed N`, `--model NAME`, `--out PATH`, `--strict` |
 | `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--runs K`, `--quantiles Q1,Q2,...` (default `0.025,0.975`), `--epsilon E` (tau-leap only, default 0.03), `--model NAME`, `--out PATH`, `--strict` |
 
@@ -416,7 +450,8 @@ Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 3. **Done:** Gillespie and tau-leap stochastic backends, ensembles of runs.
 4. **Done:** calibration by ABC-SMC, observables and incidence.
 5. **Done:** release preparation (package builds and installs cleanly; not published).
-6. Network-based agent backend, language server, first PyPI release.
+6. **Done:** the studio, a visual workbench in the browser.
+7. Contact matrices, network-based agent backend, language server, first PyPI release.
 
 Design rationale, and how each method differs from the paper it follows, are
 recorded in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md). References are in
