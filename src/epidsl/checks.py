@@ -157,8 +157,9 @@ def check(model: EpiModel) -> list[Diagnostic]:
             if problem is not None:
                 error("C13", f"noise of '{observable.name}': {problem}", observable)
 
+    has_flows = len(model.flows) > 0
     for compartment in model.compartments:
-        if compartment.name not in used:
+        if has_flows and compartment.name not in used:
             warning("C7", f"compartment '{compartment.name}' is never used", compartment)
     for constant in model.constants:
         if constant.name not in used:

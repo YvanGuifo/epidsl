@@ -51,6 +51,7 @@ from epidsl.ir import (
     Expr,
     Flow,
     Incidence,
+    Migrate,
     Neg,
     Num,
     Observable,
@@ -166,6 +167,8 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
             sync_moves[owner[source.name]] = (source.name, target.name)
         key = _name(tuple(sync_moves[i][0] for i in sorted(sync_moves)))
         flows.extend(_lift(sync_moves, key, sync, cells, marginals, strata))
+
+    flows.extend(_migration_flows(composition, parts, cells, strata, owner))
 
     observables: list[Observable] = []
     declared_by: dict[str, str] = {}
@@ -308,8 +311,6 @@ def _stratify(
         name = declared.name
         if name in strata:
             _fail(f"constant '{name}' is stratified more than once", declared)
-        if name not in constants:
-            _fail(f"no composed model declares a constant '{name}'", declared)
         for ref in declared.by:
             if ref.name not in index:
                 _fail(f"'{ref.name}' is not one of the composed models", ref)
@@ -347,18 +348,28 @@ def _stratify(
         if missing:
             _fail(f"constant '{name}' has no value for {', '.join(missing)}", declared)
 
-        unit = declared.unit if declared.unit is not None else constants[name].unit
+        unit = declared.unit if declared.unit is not None else (
+            constants[name].unit if name in constants else None
+        )
         prior = declared.prior
-        if prior is None and declared.kind == "parameter":
+        if prior is None and declared.kind == "parameter" and name in constants:
             prior = constants[name].prior
         generated = {key: "_".join((name, *key)) for key in keys}
-        replaced: dict[str, Constant] = {}
-        for existing, constant in constants.items():
-            if existing != name:
-                replaced[existing] = constant
-                continue
+        for new_name in generated.values():
+            if new_name in constants:
+                _fail(
+                    f"the name '{new_name}' is ambiguous in compose {composition.name}; "
+                    "rename a compartment or constant",
+                    declared,
+                )
+        if name not in constants:
+            # New constant declared inline in the compose block (e.g. a migration matrix).
+            # Skip diagonal entries for matrix constants: they are never referenced by flows
+            # (migrate only generates off-diagonal flows), so creating them triggers C7.
             for key in keys:
-                replaced[generated[key]] = Constant(
+                if matrix and len(key) == 2 and key[0] == key[1]:
+                    continue
+                constants[generated[key]] = Constant(
                     generated[key],
                     declared.kind,
                     given[key],
@@ -367,14 +378,23 @@ def _stratify(
                     declared.column,
                     prior,
                 )
-        for new_name in generated.values():
-            if new_name in constants:
-                _fail(
-                    f"the name '{new_name}' is ambiguous in compose {composition.name}; "
-                    "rename a compartment or constant",
-                    declared,
-                )
-        constants = replaced
+        else:
+            replaced: dict[str, Constant] = {}
+            for existing, constant in constants.items():
+                if existing != name:
+                    replaced[existing] = constant
+                    continue
+                for key in keys:
+                    replaced[generated[key]] = Constant(
+                        generated[key],
+                        declared.kind,
+                        given[key],
+                        unit,
+                        declared.line,
+                        declared.column,
+                        prior,
+                    )
+            constants = replaced
         strata[name] = Stratum(by, by_name, generated, matrix)
     return constants, strata
 
@@ -562,6 +582,76 @@ def _lift_observable(
             return Call(func, lifted_args, line, column)
         case _:
             return _rewrite(expr, None, "", marginals, {})
+
+
+def _migration_flows(
+    composition: Composition,
+    parts: list[EpiModel],
+    cells: list[Cell],
+    strata: Strata,
+    owner: dict[str, int],
+) -> list[Flow]:
+    """Generate cross-patch flows from every ``migrate`` statement."""
+    result: list[Flow] = []
+    for migrate in composition.migrates:
+        rate_name = migrate.rate
+        if rate_name not in strata:
+            _fail(
+                f"'migrate ... : {rate_name}' — '{rate_name}' is not a matrix constant "
+                f"in compose {composition.name}; declare it with "
+                f"'parameter {rate_name} by <Model>, <Model> = ...'",
+                migrate,
+            )
+        stratum = strata[rate_name]
+        if not stratum.matrix:
+            _fail(
+                f"'migrate ... : {rate_name}' — '{rate_name}' is not a matrix constant; "
+                f"declare it with 'by {stratum.by_name}, {stratum.by_name}'",
+                migrate,
+            )
+        by = stratum.by
+        patch_states = [c.name for c in parts[by].compartments]
+
+        for comp_name in migrate.compartments:
+            if comp_name not in owner:
+                _fail(
+                    f"'migrate' lists '{comp_name}', which is not a compartment "
+                    f"of any composed model in compose {composition.name}",
+                    migrate,
+                )
+            if owner[comp_name] == by:
+                _fail(
+                    f"'migrate' lists '{comp_name}', which belongs to model "
+                    f"'{parts[by].name}' — the same model that '{rate_name}' indexes; "
+                    f"list compartments of a different model",
+                    migrate,
+                )
+
+        for src_patch in patch_states:
+            for dst_patch in patch_states:
+                if src_patch == dst_patch:
+                    continue
+                rate_const = stratum.generated[(src_patch, dst_patch)]
+                for comp_name in migrate.compartments:
+                    m = owner[comp_name]
+                    for cell in cells:
+                        if cell[m] != comp_name or cell[by] != src_patch:
+                            continue
+                        dst_cell = tuple(
+                            dst_patch if i == by else s for i, s in enumerate(cell)
+                        )
+                        source_cell_name = _name(cell)
+                        dest_cell_name = _name(dst_cell)
+                        result.append(
+                            Flow(
+                                source_cell_name,
+                                dest_cell_name,
+                                BinOp("*", Sym(rate_const), Sym(source_cell_name)),
+                                migrate.line,
+                                migrate.column,
+                            )
+                        )
+    return result
 
 
 def _rewrite(

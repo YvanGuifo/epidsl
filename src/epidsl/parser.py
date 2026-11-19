@@ -22,6 +22,7 @@ from epidsl.ir import (
     Expr,
     Flow,
     Incidence,
+    Migrate,
     Neg,
     NoiseDistribution,
     Num,
@@ -60,6 +61,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
         entries: list[Entry] = []
         observables: list[Observable] = []
         constants: list[Constant] = []
+        migrates: list[Migrate] = []
         for item in statements:
             if isinstance(item, Sync):
                 syncs.append(item)
@@ -71,6 +73,8 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                 stratified.append(item)
             elif isinstance(item, Entry):
                 entries.append(item)
+            elif isinstance(item, Migrate):
+                migrates.append(item)
             elif models is not None:
                 raise EpiSyntaxError(f"compose {name} declares models twice", **_at(name))
             else:
@@ -83,7 +87,16 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             tuple(entries),
             tuple(observables),
             tuple(constants),
+            tuple(migrates),
             **_at(name),
+        )
+
+    def migrate(self, *tokens: Token) -> Migrate:
+        *compartment_tokens, rate_token = tokens
+        return Migrate(
+            tuple(str(t) for t in compartment_tokens),
+            str(rate_token),
+            **({"line": rate_token.line or 0, "column": rate_token.column or 0}),
         )
 
     def stratified_parameter(self, name: Token, by: tuple[Ref, ...], *rest: Any) -> Stratified:

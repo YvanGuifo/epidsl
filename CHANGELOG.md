@@ -24,6 +24,13 @@ First version, not yet published.
 - **Several processors.** `--workers` spreads an ensemble or a calibration over
   processes without changing its result.
 - **Observables.** `observe` statements and `incidence(A -> B)`.
+- **Metapopulation migration.** A `migrate` statement in a `compose` block generates
+  cross-patch flows for listed compartments according to a matrix constant declared with
+  `rate X by Model, Model = {...}`.  Stochastic backends support migration natively.
+  Example: `examples/metapop_sir.epidsl`.
+- **Inline matrix constants.** A `rate` or `parameter` stratified with `by Model` or
+  `by Model, Model` may now be declared inline in a `compose` block without a prior
+  declaration in a component model.
 - **Observation noise.** An observable may declare a noise distribution with
   `observe X = expr ~ poisson()`, `~ normal(sd)`, or `~ negbinomial(phi)`.
   The ABC-SMC calibration uses the negative log-likelihood of the declared

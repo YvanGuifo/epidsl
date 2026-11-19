@@ -687,5 +687,78 @@ reproducible under the same seed.
 
 ---
 
+## D24 — Metapopulation migration via `migrate`
+
+### Context
+
+Epidemiological models often represent several geographically or socially distinct
+sub-populations (patches) between which individuals travel.  EpiDSL already supported
+stratified models via the SAN composition algebra; the missing piece was a concise way
+to express *cross-patch flows* (migration) without listing every directed edge by hand.
+
+### Decision: `migrate` statement with a matrix constant
+
+A new `migrate` statement in `compose` blocks generates inter-patch flows automatically:
+
+```
+compose MetaSIR {
+    models: [SIR, City]
+
+    rate travel by City, City = {
+        Paris, Paris: 0, Paris, Lyon: 0.005, ...
+    } [1/day]
+
+    migrate S, I, R : travel
+}
+```
+
+For every pair of distinct patch states (src, dst) and every listed compartment C, one
+flow `C_src -> C_dst` is added with rate `travel_src_dst * C_src`.  This is a
+per-capita emigration rate: in the ODE, `dC_src/dt -= travel_src_dst * C_src` and
+`dC_dst/dt += travel_src_dst * C_src`.
+
+### Why this design?
+
+**Option A (explicit cross-strata flows)** — writing each flow by hand — is correct but
+verbose for N patches: O(N²) lines for a symmetric matrix.
+
+**Option B (declarative `network` block)** — adds three new keywords (`network`, `edge`,
+`migrate`).
+
+**Option C (matrix constant + `migrate`)** — reuses the existing matrix-constant
+mechanism (`by X, X`) and adds only one keyword (`migrate`).  It composes cleanly with
+the existing strata machinery and keeps the grammar minimal.
+
+### Inline matrix constants
+
+As a by-product of this feature, `stratified_rate` and `stratified_parameter` in a
+`compose` block may now declare **new** constants (not present in any composed model).
+Previously the constant had to be pre-declared in one of the models; this restriction
+was lifted because migration matrices have no meaningful "base" value in the component
+models.
+
+### Warnings on diagonal rates and patch compartments
+
+The checker emits C7 ("unused") for diagonal rates (`travel_X_X`, always 0) and for
+compartments of the pure-patch model (they have no local flows).  These warnings are
+cosmetic: the composition uses them correctly.  Users who want a warning-free run can
+set all diagonal entries equal to a named zero constant or use `--strict false`.
+
+### Gillespie correctness
+
+Each migration event `C_src -> C_dst` at rate `mu * C_src` is a standard Gillespie
+reaction and is handled without changes to the stochastic backends.  Population totals
+are conserved exactly (integer counts).  Tested in
+`tests/test_network.py::test_migrate_gillespie_total_integer_conservation`.
+
+### Limitations
+
+- Only one matrix per `migrate` statement; multiple matrices require separate statements.
+- Patch model must have the same total population as the base model (existing SAN
+  constraint); patch compartment sizes encode the fraction of population per patch.
+- No distance-based or time-varying travel rates (possible future work).
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

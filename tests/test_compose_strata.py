@@ -196,7 +196,6 @@ def test_every_other_model_needs_an_entry_state() -> None:
 @pytest.mark.parametrize(
     ("body", "fragment"),
     [
-        ("rate nope by Age = { young: 1, old: 1 }", "no composed model declares a constant 'nope'"),
         ("rate beta by Nope = { young: 1, old: 1 }", "'Nope' is not one of the composed models"),
         ("rate beta by Age = { young: 1 }", "constant 'beta' has no value for 'old'"),
         (

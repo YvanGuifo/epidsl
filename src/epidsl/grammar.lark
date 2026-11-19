@@ -25,7 +25,9 @@ semantics: "semantics" ":" "[" NAME ("," NAME)* "]"
 compose: "compose" NAME "{" (_compose_statement ";"?)* "}"
 
 _compose_statement: models | sync | stratified_parameter | stratified_rate | enter | observe
-    | parameter | rate
+    | parameter | rate | migrate
+
+migrate: "migrate" NAME ("," NAME)* ":" NAME
 
 models: "models" ":" "[" NAME ("," NAME)* "]"
 sync: "sync" move ("," move)+ ":" _expr

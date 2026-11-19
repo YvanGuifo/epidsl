@@ -252,6 +252,21 @@ class Entry:
 
 
 @dataclass(frozen=True, slots=True)
+class Migrate:
+    """Cross-patch migration: named compartments move according to a rate matrix.
+
+    ``rate`` must name a matrix-valued constant (``by Model, Model``) declared in
+    the same compose block.  Every listed compartment gets one outflow to each other
+    patch, weighted by the corresponding matrix entry.
+    """
+
+    compartments: tuple[str, ...]
+    rate: str
+    line: int = _pos()
+    column: int = _pos()
+
+
+@dataclass(frozen=True, slots=True)
 class Composition:
     """A ``compose`` block, before it is flattened into an EpiModel."""
 
@@ -263,6 +278,7 @@ class Composition:
     observables: tuple[Observable, ...] = ()
     #: Constants declared in the block itself, added to those of the models.
     constants: tuple[Constant, ...] = ()
+    migrates: tuple[Migrate, ...] = ()
     line: int = _pos()
     column: int = _pos()
 

@@ -392,6 +392,44 @@ compose AgeStructured {
 
 The inflow `flow -> S : mu * N` of `Epidemic` becomes `flow -> S_young : mu * N`.
 
+### Model migration between patches
+
+A metapopulation model couples a disease model with a "patch" model whose
+compartments name the locations (cities, regions, age groups…). Migration between
+patches is declared with a `migrate` statement and a matrix constant:
+
+```
+model City { compartment Paris = 5000, Lyon = 3000, Marseille = 2000 }
+
+compose MetaSIR {
+    models: [SIR, City]
+
+    rate travel by City, City = {
+        Paris,     Paris:     0,
+        Paris,     Lyon:      0.005,
+        Paris,     Marseille: 0.002,
+        Lyon,      Paris:     0.005,
+        Lyon,      Lyon:      0,
+        Lyon,      Marseille: 0.003,
+        Marseille, Paris:     0.002,
+        Marseille, Lyon:      0.003,
+        Marseille, Marseille: 0
+    } [1/day]
+
+    migrate S, I, R : travel
+}
+```
+
+`migrate S, I, R : travel` generates a cross-patch flow for every listed
+compartment and every ordered pair of distinct patches. The entry `Paris, Lyon:
+0.005` creates the flow `S_Paris -> S_Lyon : travel_Paris_Lyon * S_Paris`
+(and likewise for `I` and `R`). Migration conserves population.
+
+The rate matrix is declared inline in the `compose` block; it does not need a
+prior declaration in `SIR` or `City`. Initial populations must be equal across
+all composed models. The full example is in
+[examples/metapop_sir.epidsl](examples/metapop_sir.epidsl).
+
 ### Observe and calibrate by stratum
 
 A `compose` block can declare its own constants and observables. They are written
