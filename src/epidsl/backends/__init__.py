@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 
 from epidsl.checks import errors
 from epidsl.expr import Evaluator, compile_expr, walk
-from epidsl.ir import EpiModel, Incidence, Semantics, SimulationConfig
+from epidsl.ir import EpiModel, Incidence, NoiseDistribution, Semantics, SimulationConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,12 +101,17 @@ def observe(
     t: NDArray[np.float64],
     states: NDArray[np.float64],
     cumulative: NDArray[np.float64],
+    rng: np.random.Generator | None = None,
 ) -> dict[str, NDArray[np.float64]]:
     """Evaluate the model's observables at every output time.
 
     ``states[k]`` is the state at ``t[k]`` and ``cumulative[k, i]`` the number of
     individuals moved so far by flow ``compiled.tracked[i]``. An incidence term is
     the count over the interval that ends at the output time, and zero at the first.
+
+    When ``rng`` is provided and an observable declares a noise distribution, the
+    returned values are drawn from that distribution (mean = deterministic value).
+    Without ``rng`` the deterministic mean is always returned.
     """
     if not model.observables:
         return {}
@@ -136,5 +141,27 @@ def observe(
                     f"observable '{observable.name}' could not be evaluated "
                     f"at t = {t[k]:g} ({error})"
                 ) from error
+        if rng is not None and observable.noise is not None:
+            values = _apply_noise(observable.noise, values, rng)
         observed[observable.name] = values
     return observed
+
+
+def _apply_noise(
+    noise: NoiseDistribution,
+    values: NDArray[np.float64],
+    rng: np.random.Generator,
+) -> NDArray[np.float64]:
+    """Draw one sample per time point from ``noise`` centred on ``values``."""
+    mu = np.maximum(values, 0.0)
+    if noise.dist == "poisson":
+        return rng.poisson(mu).astype(np.float64)
+    elif noise.dist == "normal":
+        sd = noise.params[0]
+        return rng.normal(mu, sd)
+    else:  # negbinomial
+        phi = noise.params[0]
+        # Parametrisation: mean = mu, variance = mu + mu^2 / phi
+        # scipy / numpy NB uses (n=phi, p=phi/(phi+mu))
+        p = np.where(mu > 0, phi / (phi + mu), 1.0)
+        return rng.negative_binomial(phi, p).astype(np.float64)

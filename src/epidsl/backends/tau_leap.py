@@ -177,7 +177,7 @@ class TauLeapBackend:
                 "exact_steps": exact_steps,
                 "seed": config.seed,
             },
-            observed=observe(model, compiled, grid, output, moved_output),
+            observed=observe(model, compiled, grid, output, moved_output, rng=rng),
         )
 
     def _step(

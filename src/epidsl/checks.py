@@ -10,6 +10,7 @@ C7  unused compartment, rate or parameter      warning
 C8  declaration shadows a reserved name        error
 C11 ill-defined prior, or value outside it     error
 C12 incidence in a flow rate, or of no flow    error
+C13 ill-defined noise distribution             error
 
 (C9 and C10 are reserved for mass conservation and undeclared semantics.)
 """
@@ -151,6 +152,10 @@ def check(model: EpiModel) -> list[Diagnostic]:
 
     for observable in model.observables:
         check_expr(observable.expr, in_observable=True)
+        if observable.noise is not None:
+            problem = observable.noise.problem()
+            if problem is not None:
+                error("C13", f"noise of '{observable.name}': {problem}", observable)
 
     for compartment in model.compartments:
         if compartment.name not in used:

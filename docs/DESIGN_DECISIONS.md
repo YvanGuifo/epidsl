@@ -635,5 +635,57 @@ was not re-checked and is not reproduced here.
 
 ---
 
+### D23 — Observation noise: tilde syntax, NLL calibration, stochastic sampling (2026-11-19)
+
+**Decision:** An observable may declare a noise distribution with `~ dist(params)`:
+`poisson()`, `normal(sd)`, or `negbinomial(phi)`. The distribution affects
+three things:
+
+1. **Calibration distance.** The ABC-SMC distance in `calibration.py` replaces
+   the RMSE for noisy observables by the negative log-likelihood (NLL) of the
+   noise distribution, normalised per data point. When both noisy and noise-free
+   observables are observed, the NLL contribution and the RMSE contribution are
+   summed so that neither dominates the other. The sum is still a valid pseudometric
+   for ABC (it has a minimum exactly when the simulation equals the data under both
+   criteria) and ABC only requires a consistent ordering.
+
+2. **ODE backend.** `observe()` in `backends/__init__.py` always returns the
+   deterministic mean regardless of the noise field when no `rng` is passed.
+   Deterministic output is the right default for a deterministic solver: it is what
+   the user typically wants to plot or compare against data.
+
+3. **Stochastic backends.** When Gillespie or tau-leap pass `rng=rng` to
+   `observe()`, each output time gets one independent draw from the noise
+   distribution, centred on the deterministic value. This models measurement error
+   on top of demographic stochasticity and is useful for generating synthetic
+   observed data or for ensemble visualisation.
+
+**Why these three distributions?**
+- Poisson: standard for integer counts (cases reported per interval); variance = mean.
+- Negative binomial (phi): overdispersed counts; variance = mean + mean²/phi; reduces
+  to Poisson as phi → ∞. Commonly used for infectious disease surveillance data.
+- Normal(sd): continuous measurements or large-count approximations where Gaussian
+  error is a reasonable assumption.
+
+**Why NLL and not RMSE for calibration?**
+RMSE treats all deviations equally regardless of the expected magnitude. For count
+data the variance grows with the mean, so a deviation of 10 cases when the expected
+count is 1 000 is very different from the same deviation when the count is 10. NLL
+accounts for this naturally and gives better-calibrated posteriors. Using NLL is
+equivalent to Bayesian ABC with a likelihood-based acceptance kernel (Wilkinson 2013,
+Stat. Appl. Genet. Mol. Biol. 12, 129–141).
+
+**Parametrisation of negative binomial:**
+Variance = μ + μ²/φ. The numpy parametrisation is `negative_binomial(n=φ, p=φ/(φ+μ))`.
+
+**Validation:** mean NLL-based ABC posterior for a Poisson SIR recovers the
+true β within 2 standard deviations from 10 particles over 2 populations with
+seed 42 (checked in `tests/test_noise.py::test_noise_calibration_poisson`). Tests also
+confirm: (i) stochastic Poisson draws have integer values and mean ≈ ODE value;
+(ii) ODE returns deterministic values regardless of noise field; (iii) trajectories are
+reproducible under the same seed.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

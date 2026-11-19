@@ -24,6 +24,13 @@ First version, not yet published.
 - **Several processors.** `--workers` spreads an ensemble or a calibration over
   processes without changing its result.
 - **Observables.** `observe` statements and `incidence(A -> B)`.
+- **Observation noise.** An observable may declare a noise distribution with
+  `observe X = expr ~ poisson()`, `~ normal(sd)`, or `~ negbinomial(phi)`.
+  The ABC-SMC calibration uses the negative log-likelihood of the declared
+  distribution instead of RMSE, giving better posteriors for count data.
+  Stochastic backends (Gillespie, tau-leap) draw from the noise distribution at
+  each output time; the ODE backend always returns the deterministic mean.
+  Check C13 validates noise parameters.
 - **Calibration.** Priors on parameters and `epidsl calibrate`, by ABC-SMC.
 - **Studio.** `epidsl studio` opens a visual workbench in the browser: the model
   as a grid of compartments and flows linked to the source, live diagnostics,
@@ -35,5 +42,5 @@ First version, not yet published.
 - Exact stochastic simulation is much slower when a rate depends on time.
 - A contact matrix (a rate that depends on the strata of both parties) cannot be
   expressed.
-- Observables are deterministic functions of the simulation: no measurement noise
-  and no reporting delay.
+- No reporting delay on observables.
+- Exact stochastic simulation with time-dependent rates uses numerical integration (slower).

@@ -112,17 +112,28 @@ def simulate_at(
     )
 
 
-def distance(result: BackendResult, observations: Observations) -> float:
-    """Root mean squared relative error between a simulation and the observations.
+def distance(result: BackendResult, observations: Observations, model: EpiModel | None = None) -> float:
+    """Root mean squared relative error, or mean negative log-likelihood when noise is declared.
 
-    Each series is divided by its largest observed magnitude, so that large and small
-    quantities count alike. A compartment is interpolated to the observation times.
-    An observable is not, since an incidence depends on the spacing of the output
-    times: the simulation must then report at the observation times themselves.
+    When some observables declare a noise distribution and others do not, the two
+    contributions are computed separately — mean NLL per data point and RMSE — and
+    summed so that neither drowns the other.
     """
+    from scipy.special import gammaln
+
     same_times = len(result.t) == len(observations.t) and np.array_equal(result.t, observations.t)
-    total = 0.0
-    count = 0
+
+    noise_map: dict[str, object] = {}
+    if model is not None:
+        for obs in model.observables:
+            if obs.noise is not None:
+                noise_map[obs.name] = obs.noise
+
+    nll_total = 0.0
+    nll_count = 0
+    rmse_sq_total = 0.0
+    rmse_sq_count = 0
+
     for name, observed in observations.y.items():
         if name in result.y:
             simulated = np.interp(observations.t, result.t, result.y[name])
@@ -134,10 +145,41 @@ def distance(result: BackendResult, observations: Observations) -> float:
             )
         else:
             simulated = result.observed[name]
-        scale = float(np.abs(observed).max()) or 1.0
-        total += float((((simulated - observed) / scale) ** 2).sum())
-        count += len(observed)
-    return math.sqrt(total / count)
+
+        if name in noise_map:
+            noise = noise_map[name]
+            simulated_safe = np.maximum(simulated, 1e-10)
+            if noise.dist == "poisson":
+                # NLL = -sum(y * log(lambda) - lambda); constant -log(y!) dropped
+                nll_total += float(np.sum(simulated_safe - observed * np.log(simulated_safe)))
+            elif noise.dist == "normal":
+                sd = noise.params[0]
+                nll_total += float(
+                    0.5 * np.sum(((simulated - observed) / sd) ** 2)
+                    + len(observed) * math.log(sd * math.sqrt(2.0 * math.pi))
+                )
+            elif noise.dist == "negbinomial":
+                phi = noise.params[0]
+                nll_total += float(
+                    -np.sum(
+                        gammaln(observed + phi)
+                        - gammaln(phi)
+                        - gammaln(observed + 1)
+                        + phi * math.log(phi)
+                        - phi * np.log(phi + simulated_safe)
+                        + observed * np.log(simulated_safe)
+                        - observed * np.log(phi + simulated_safe)
+                    )
+                )
+            nll_count += len(observed)
+        else:
+            scale = float(np.abs(observed).max()) or 1.0
+            rmse_sq_total += float((((simulated - observed) / scale) ** 2).sum())
+            rmse_sq_count += len(observed)
+
+    nll_part = nll_total / nll_count if nll_count > 0 else 0.0
+    rmse_part = math.sqrt(max(0.0, rmse_sq_total / rmse_sq_count)) if rmse_sq_count > 0 else 0.0
+    return nll_part + rmse_part
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,7 +277,7 @@ def _measure(
             simulated = simulate_at(
                 backend, with_constants(model, values), observations.t, run_seed
             )
-            measured.append(distance(simulated, observations))
+            measured.append(distance(simulated, observations, model))
         except RuntimeError:
             measured.append(math.inf)  # the simulation failed here: never accepted
     return measured

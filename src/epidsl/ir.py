@@ -128,6 +128,32 @@ class Prior:
 
 
 @dataclass(frozen=True, slots=True)
+class NoiseDistribution:
+    """Noise distribution of an observable, used by calibration.
+
+    ``poisson()`` takes no parameters; ``normal(sd)`` takes a standard deviation;
+    ``negbinomial(phi)`` takes a dispersion parameter.
+    """
+
+    dist: Literal["poisson", "normal", "negbinomial"]
+    params: tuple[float, ...]
+
+    def problem(self) -> str | None:
+        """Why the distribution is not well defined, or None if it is."""
+        match self.dist:
+            case "poisson":
+                return None if not self.params else "poisson() takes no parameters"
+            case "normal":
+                if len(self.params) != 1:
+                    return "normal() takes exactly one parameter (sd)"
+                return None if self.params[0] > 0 else "standard deviation must be positive"
+            case "negbinomial":
+                if len(self.params) != 1:
+                    return "negbinomial() takes exactly one parameter (phi)"
+                return None if self.params[0] > 0 else "dispersion must be positive"
+
+
+@dataclass(frozen=True, slots=True)
 class Constant:
     """A named constant. ``parameter`` marks it as calibratable; ``rate`` is fixed."""
 
@@ -159,6 +185,7 @@ class Observable:
     expr: Expr
     line: int = _pos()
     column: int = _pos()
+    noise: NoiseDistribution | None = None
 
 
 @dataclass(frozen=True, slots=True)

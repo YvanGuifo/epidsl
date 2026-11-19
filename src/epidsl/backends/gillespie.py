@@ -121,5 +121,5 @@ class GillespieBackend:
             t=grid,
             y={name: output[:, i].copy() for i, name in enumerate(compiled.names)},
             metadata={"backend": "Gillespie", "events": events, "seed": config.seed},
-            observed=observe(model, compiled, grid, output, moved_output),
+            observed=observe(model, compiled, grid, output, moved_output, rng=rng),
         )

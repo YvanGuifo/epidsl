@@ -172,8 +172,21 @@ The data are synthetic weekly counts produced with `beta = 0.3` and `rho = 0.4`.
 The reporting fraction is less sharply determined than the transmission rate;
 more `--populations` narrow both intervals.
 
-An observable is a deterministic function of the simulation. Measurement noise,
-such as the chance of each case being reported, is not modelled.
+An observable may declare a **noise distribution** with a tilde:
+
+```
+observe cases = incidence(S -> I) ~ poisson()
+observe prevalence = I             ~ negbinomial(5.0)
+observe signal = rho * I           ~ normal(10.0)
+```
+
+`poisson()` suits integer case counts; `negbinomial(phi)` suits overdispersed
+counts (larger phi → less overdispersion); `normal(sd)` suits continuous
+measurements. When calibrating, EpiDSL replaces the RMSE by the negative
+log-likelihood of the declared distribution, which gives sharper posteriors for
+count data. The stochastic backends (Gillespie, tau-leap) draw from the noise
+distribution at each output time; the ODE backend always returns the
+deterministic mean. See `examples/sir_noise.epidsl`.
 
 ## Calibrate parameters from data
 

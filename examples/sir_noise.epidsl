@@ -1,0 +1,27 @@
+-- SIR model with observation noise.
+-- The tilde (~) declares a noise distribution on each observable:
+--   ~ poisson()          for integer counts (e.g. cases reported per week)
+--   ~ negbinomial(phi)   for overdispersed counts (variance = mean + mean²/phi)
+--   ~ normal(sd)         for continuous measurements with Gaussian error
+--
+-- The noise distribution affects only the calibration likelihood.
+-- The ODE backend always returns the deterministic mean.
+-- Gillespie and tau-leap sample one draw per output time per observable.
+
+model SIR {
+    semantics: [ODE, Gillespie, TauLeap]
+
+    compartment S = 9990, I = 10, R = 0
+
+    parameter beta = 0.0003 prior uniform(0.0001, 0.001) [1/day]
+    rate gamma = 0.1 [1/day]
+
+    flow S -> I : beta * S * I
+    flow I -> R : gamma * I
+
+    -- Cases reported per day: Poisson counts.
+    observe cases = incidence(S -> I) ~ poisson()
+
+    -- Prevalence measured with overdispersion (phi = 5).
+    observe prevalence = I ~ negbinomial(5.0)
+}

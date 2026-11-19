@@ -23,6 +23,7 @@ from epidsl.ir import (
     Flow,
     Incidence,
     Neg,
+    NoiseDistribution,
     Num,
     Observable,
     Prior,
@@ -176,8 +177,23 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             **_at(source or arrow),
         )
 
-    def observe(self, name: Token, expr: Expr) -> Observable:
-        return Observable(str(name), expr, **_at(name))
+    def observe(self, name: Token, expr: Expr, noise: NoiseDistribution | None = None) -> Observable:
+        return Observable(str(name), expr, **_at(name), noise=noise)
+
+    def noise(self, dist: Token, *args: float | Token | None) -> NoiseDistribution:
+        if dist not in ("poisson", "normal", "negbinomial"):
+            raise EpiSyntaxError(
+                f"unknown noise distribution '{dist}' (expected poisson, normal or negbinomial)",
+                **_at(dist),
+            )
+        params: list[float] = []
+        for arg in args:
+            if arg is None:
+                continue
+            if isinstance(arg, Token):
+                raise EpiSyntaxError(f"noise distribution '{dist}' expects numbers, not '{arg}'", **_at(arg))
+            params.append(arg)
+        return NoiseDistribution(str(dist), tuple(params))
 
     def incidence(self, source: Token | None, arrow: Token, target: Token | None) -> Incidence:
         pair = (None if source is None else str(source), None if target is None else str(target))
@@ -194,6 +210,9 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                     f"unknown semantics '{name}' (expected one of: {known})", **_at(name)
                 ) from None
         return tuple(values)
+
+    def noise_arg(self, item: float | Token) -> float | Token:
+        return item
 
     def positive(self, number: Token) -> float:
         return float(number)
