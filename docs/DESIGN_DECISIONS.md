@@ -1364,5 +1364,84 @@ to guard against trimming regressions.
 
 ---
 
+## D38 — Contact network backend (`NetworkBackend`)
+
+**Status:** Implemented (`src/epidsl/backends/network.py`, `src/epidsl/ir.py`,
+`src/epidsl/grammar.lark`, `src/epidsl/parser.py`, `src/epidsl/checks.py`).
+
+**Motivation.** Compartmental models assume homogeneous mixing: each individual
+contacts all others at equal rate.  Real populations have heterogeneous contact
+patterns (households, workplaces, age groups) that significantly affect epidemic
+dynamics (Keeling & Eames, 2005).  Network models represent each individual as a
+graph node; transmission requires direct contact between nodes.  The
+`contacts(X)` function in a rate expression gives the number of a focal agent's
+neighbours currently in state X, allowing rates like `beta * contacts(I)` that
+depend on the local infection pressure rather than the global prevalence.
+
+**Grammar extension.** A `network <generator>(params)` clause is added as an
+optional statement inside a `model` block:
+
+```
+network watts_strogatz(k=6, rewire=0.1)
+```
+
+Supported generators: `erdos_renyi(p)`, `watts_strogatz(k, rewire)`,
+`barabasi_albert(m)`, `complete()`.
+
+**IR.** `NetworkDecl(generator, params)` is stored as `EpiModel.network`.  The
+new `Semantics.NETWORK` enum value gates the network-specific checks.
+
+**Algorithm.** The backend runs a Gillespie SSA on the contact graph:
+
+1. Build the graph with networkx using the declared generator and seed.
+2. Assign N = sum(initial) agents to compartments, randomly shuffled.
+3. Main loop:
+   a. For each eligible agent (in state = flow source), evaluate the per-agent
+      rate using `contacts(X)` = number of its neighbours in state X.
+   b. Draw waiting time dt ~ Exp(total_rate).
+   c. Select one (agent, flow) event proportionally to rates.
+   d. Update the agent's state.
+4. Record the population vector at each output time.
+
+**`contacts(X)` evaluation.** The expression evaluator `_eval_expr` handles
+`Call("contacts", (Sym("X"),))` by looking up the count of X-state neighbours
+for the focal agent.  This avoids polluting `compile_expr` (which does not have
+per-agent context) with network-specific logic.
+
+**Static checks.**
+
+- **C-N1**: `semantics: [Network]` without a `network` clause is an error.
+- **C-N2**: `contacts()` with wrong arity (not exactly 1 argument) is an error.
+  `contacts()` is exempt from C3 (unknown function).
+
+**Performance (measured).**
+
+| Configuration | N | t_end | Time |
+|---|---|---|---|
+| Watts-Strogatz k=6, rewire=0.1 | 1000 | 50 days | 13.6 s |
+| Complete graph | 100 | 10 days | < 1 s |
+
+The backend is a pure-Python Gillespie loop — O(N) per step — and is intended
+for small-to-medium populations (N ≤ 500 without latency constraints).  Larger
+networks require vectorised contact counting (sparse A @ state_indicator) or a
+compiled backend, which is left for a future tranche.
+
+**Alternatives considered.**
+
+- *Tau-leap on network*: would require per-agent tau-leap with reaction channels
+  per edge — far more complex to implement correctly.
+- *Per-agent rate cache with incremental update*: when agent u transitions,
+  recompute only u's rate and the rates of u's neighbours — O(degree) instead of
+  O(N) per event.  Left as a future optimisation; the correctness-first approach
+  is chosen here.
+- *Separate `contacts` IR node*: handled as a plain `Call` node special-cased in
+  the evaluator and checks, avoiding changes to `compile_expr`.
+
+**Seed contract.** The seed from `SimulationConfig.seed` governs both the graph
+construction and the agent-state shuffling, so simulations are fully reproducible.
+The first integer drawn from the RNG is used as the graph seed.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

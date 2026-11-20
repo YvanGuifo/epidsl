@@ -24,6 +24,7 @@ from epidsl.ir import (
     Incidence,
     Migrate,
     Neg,
+    NetworkDecl,
     NoiseDistribution,
     Num,
     Observable,
@@ -134,6 +135,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
         flows: list[Flow] = []
         observables: list[Observable] = []
         semantics: tuple[Semantics, ...] | None = None
+        network: NetworkDecl | None = None
         for item in statements:
             if isinstance(item, list):
                 compartments.extend(item)
@@ -143,6 +145,10 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                 flows.append(item)
             elif isinstance(item, Observable):
                 observables.append(item)
+            elif isinstance(item, NetworkDecl):
+                if network is not None:
+                    raise EpiSyntaxError(f"model {name} declares network twice", **_at(name))
+                network = item
             elif semantics is not None:
                 raise EpiSyntaxError(f"model {name} declares semantics twice", **_at(name))
             else:
@@ -154,6 +160,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             flows=tuple(flows),
             semantics=semantics or (Semantics.ODE,),
             observables=tuple(observables),
+            network=network,
             line=name.line or 0,
             column=name.column or 0,
         )
@@ -216,6 +223,12 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                 raise EpiSyntaxError(f"noise distribution '{dist}' expects numbers, not '{arg}'", **_at(arg))
             params.append(arg)
         return NoiseDistribution(str(dist), tuple(params))
+
+    def network_decl(self, generator: Token, *params: tuple[str, float] | None) -> NetworkDecl:
+        return NetworkDecl(str(generator), tuple(p for p in params if p is not None), line=generator.line or 0, column=generator.column or 0)
+
+    def net_param(self, name: Token, value: float) -> tuple[str, float]:
+        return (str(name), value)
 
     def incidence(self, source: Token | None, arrow: Token, target: Token | None) -> Incidence:
         pair = (None if source is None else str(source), None if target is None else str(target))

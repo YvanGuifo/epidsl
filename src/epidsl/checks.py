@@ -1,19 +1,21 @@
 """Static checks on a parsed model.
 
-C1  duplicate declaration                      error
-C2  flow endpoint is not a compartment         error
-C3  undefined symbol / bad function call       error
-C4  degenerate flow (same or no endpoints)     error
-C5  rate or parameter without a unit           warning
-C6  negative or non-finite declared value      error
-C7  unused compartment, rate or parameter      warning
-C8  declaration shadows a reserved name        error
-C9  open flows without a counterpart           warning
-C10 backend not declared in semantics          error
-C11 ill-defined prior, or value outside it     error
-C12 incidence in a flow rate, or of no flow    error
-C13 ill-defined noise distribution             error
-C14 negative reporting delay                   error
+C1   duplicate declaration                      error
+C2   flow endpoint is not a compartment         error
+C3   undefined symbol / bad function call       error
+C4   degenerate flow (same or no endpoints)     error
+C5   rate or parameter without a unit           warning
+C6   negative or non-finite declared value      error
+C7   unused compartment, rate or parameter      warning
+C8   declaration shadows a reserved name        error
+C9   open flows without a counterpart           warning
+C10  backend not declared in semantics          error
+C11  ill-defined prior, or value outside it     error
+C12  incidence in a flow rate, or of no flow    error
+C13  ill-defined noise distribution             error
+C14  negative reporting delay                   error
+C-N1 Network semantics without a network clause error
+C-N2 contacts() with wrong arity               error
 """
 
 from __future__ import annotations
@@ -110,7 +112,14 @@ def check(
                 if node.name not in compartments | constants | BUILTIN_SYMBOLS | allowed_undefined:
                     error("C3", f"undefined symbol '{node.name}'", node)
             elif isinstance(node, Call):
-                if node.func not in FUNCTIONS:
+                if node.func == "contacts":
+                    if len(node.args) != 1:
+                        error(
+                            "C-N2",
+                            f"contacts() takes exactly 1 argument (a compartment name), got {len(node.args)}",
+                            node,
+                        )
+                elif node.func not in FUNCTIONS:
                     error("C3", f"unknown function '{node.func}'", node)
                 elif len(node.args) != FUNCTIONS[node.func][0]:
                     arity = FUNCTIONS[node.func][0]
@@ -140,6 +149,10 @@ def check(
                     else:
                         where = f"from {source} to {target}"
                     error("C12", f"no flow goes {where}", node)
+
+    # C-N1: Network semantics requires a network clause.
+    if Semantics.NETWORK in model.semantics and model.network is None:
+        error("C-N1", "semantics [Network] requires a 'network' clause", model)
 
     for flow in model.flows:
         for endpoint in (flow.source, flow.target):

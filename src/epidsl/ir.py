@@ -74,6 +74,17 @@ class Semantics(Enum):
     GILLESPIE = "Gillespie"
     TAU_LEAP = "TauLeap"
     ABM = "ABM"
+    NETWORK = "Network"
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkDecl:
+    """Declaration of the contact network topology for the Network backend."""
+
+    generator: str  # "erdos_renyi" | "watts_strogatz" | "barabasi_albert" | "complete"
+    params: tuple[tuple[str, float], ...]  # named parameters, e.g. (("k", 6.0), ("rewire", 0.1))
+    line: int = field(default=0, compare=False)
+    column: int = field(default=0, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,6 +211,7 @@ class EpiModel:
     #: For a composed model: each component's name and compartments, in order. Its
     #: compartments are then the product of these, in the same order.
     parts: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    network: NetworkDecl | None = None
     line: int = _pos()
     column: int = _pos()
 

@@ -8,6 +8,16 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Contact network backend `NetworkBackend` (D38).** New `semantics: [Network]`
+  with a `network <generator>(params)` clause runs a Gillespie-on-network
+  simulation: each agent is a graph node; `contacts(X)` in a rate expression
+  evaluates to the number of neighbours currently in state X.  Four generators are
+  supported: `erdos_renyi(p)`, `watts_strogatz(k, rewire)`,
+  `barabasi_albert(m)`, `complete()`.  New static checks C-N1 (Network semantics
+  without network clause) and C-N2 (`contacts()` wrong arity).  Performance:
+  ~14 s for N=1000 agents, Watts-Strogatz k=6, t_end=50 (pure-Python loop;
+  intended for small populations).  Example: `examples/sir_network.epidsl`.
+
 - **Conditional expression `ifelse(cond, a, b)` (D37).** Returns `a` if
   `cond > 0`, `b` otherwise.  Enables explicit mode-switching in rate
   expressions without introducing time-step artefacts, e.g.

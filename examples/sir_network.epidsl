@@ -1,0 +1,19 @@
+-- SIR model on a Watts-Strogatz small-world contact network.
+-- Each susceptible agent is infected at rate beta * contacts(I),
+-- where contacts(I) is the number of its infected neighbours.
+-- Run with:  uv run epidsl run examples/sir_network.epidsl --t-end 50 --method network
+
+model SIR {
+    semantics: [Network]
+
+    compartment S = 990, I = 10, R = 0
+
+    rate beta  = 0.3   [1/contact/day]
+    rate gamma = 0.1   [1/day]
+
+    -- Small-world network: 1000 nodes, mean degree 6, rewiring probability 0.1
+    network watts_strogatz(k=6, rewire=0.1)
+
+    flow S -> I : beta * contacts(I)
+    flow I -> R : gamma
+}

@@ -5,7 +5,7 @@ start: (model | compose)+
 
 model: "model" NAME "{" (_statement ";"?)* "}"
 
-_statement: compartments | parameter | rate | flow | semantics | observe
+_statement: compartments | parameter | rate | flow | semantics | observe | network_decl
 
 compartments: "compartment" compartment ("," compartment)*
 compartment: NAME ["=" signed]
@@ -15,6 +15,9 @@ prior: "prior" NAME "(" signed "," signed ")"
 rate: "rate" NAME "=" signed [UNIT]
 
 flow: "flow" [NAME] ARROW [NAME] ":" _expr
+
+network_decl: "network" NAME "(" [net_param ("," net_param)*] ")"
+net_param: NAME "=" signed
 
 observe: "observe" NAME "=" _expr [noise] [delay_clause]
 noise: "~" NAME "(" [noise_arg ("," noise_arg)*] ")"
