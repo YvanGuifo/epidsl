@@ -8,6 +8,15 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Visualisation du réseau dans epidsl studio (D44).** `describe()` expose
+  désormais deux nouvelles clés dans la réponse JSON de `/api/analyze` :
+  `network` (générateur et paramètres, `null` pour les modèles non-réseau) et
+  `attributes` (liste d'attributs catégoriels avec leur distribution).  Le
+  panneau « Model » du studio affiche le générateur réseau comme un bouton
+  cliquable (liens vers la ligne source) et chaque attribut comme une barre de
+  proportion horizontale par catégorie, avec les pourcentages en légende.
+  8 nouveaux tests dans `tests/test_studio.py`.
+
 - **Support LSP de la syntaxe réseau (D43).** Le serveur de langage expose
   désormais les mots-clés `network`, `attribute`, `interact`, `categorical`,
   les fonctions réseau `contacts`, `attr`, `neighbor_attr` et les générateurs

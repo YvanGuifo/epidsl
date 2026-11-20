@@ -20,6 +20,7 @@ EXAMPLES = Path(__file__).parent.parent / "examples"
 SIR = (EXAMPLES / "sir.epidsl").read_text()
 AGE = (EXAMPLES / "sir_age_structured.epidsl").read_text()
 HOSPITAL = (EXAMPLES / "sir_hospital.epidsl").read_text()
+NETWORK = (EXAMPLES / "sir_network.epidsl").read_text()
 
 
 def expr_text(text: str) -> str:
@@ -410,3 +411,69 @@ def test_cli_studio_reports_a_missing_file(
     missing = tmp_path / "nope.epidsl"
     assert main(["studio", str(missing), "--no-browser"]) == 1
     assert str(missing) in capsys.readouterr().err
+
+
+# --- D44 — réseau : describe() expose réseau et attributs ----------------------
+
+
+_SIR_WITH_ATTRS = """\
+model SIR {
+    semantics: [Network]
+    compartment S = 90, I = 10, R = 0
+    attribute risk ~ categorical(Low=0.7, High=0.3)
+    rate beta_low  = 0.1 [1/contact/day]
+    rate beta_high = 0.5 [1/contact/day]
+    rate gamma = 0.1 [1/day]
+    network watts_strogatz(k=6, rewire=0.1)
+    flow S -> I : beta_low * neighbor_attr(I, risk, Low)
+               + beta_high * neighbor_attr(I, risk, High)
+    flow I -> R : gamma
+}
+"""
+
+
+def test_describe_network_model_has_network_key() -> None:
+    m = described(NETWORK, "SIR")
+    assert m["network"] is not None
+    assert m["network"]["generator"] == "watts_strogatz"
+    assert m["network"]["params"] == {"k": 6.0, "rewire": 0.1}
+
+
+def test_describe_network_model_network_has_line() -> None:
+    m = described(NETWORK, "SIR")
+    assert isinstance(m["network"]["line"], int) and m["network"]["line"] > 0
+
+
+def test_describe_non_network_model_network_is_null() -> None:
+    m = described(SIR, "SIR")
+    assert m["network"] is None
+
+
+def test_describe_non_network_model_attributes_is_empty() -> None:
+    m = described(SIR, "SIR")
+    assert m["attributes"] == []
+
+
+def test_describe_network_model_has_attributes_key() -> None:
+    m = described(_SIR_WITH_ATTRS, "SIR")
+    assert len(m["attributes"]) == 1
+    attr = m["attributes"][0]
+    assert attr["name"] == "risk"
+
+
+def test_describe_network_attribute_categories() -> None:
+    m = described(_SIR_WITH_ATTRS, "SIR")
+    attr = m["attributes"][0]
+    cats = {c["label"]: c["proportion"] for c in attr["categories"]}
+    assert cats == {"Low": pytest.approx(0.7), "High": pytest.approx(0.3)}
+
+
+def test_describe_network_attribute_has_line() -> None:
+    m = described(_SIR_WITH_ATTRS, "SIR")
+    attr = m["attributes"][0]
+    assert isinstance(attr["line"], int) and attr["line"] > 0
+
+
+def test_describe_network_model_no_attributes_has_empty_list() -> None:
+    m = described(NETWORK, "SIR")
+    assert m["attributes"] == []

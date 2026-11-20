@@ -415,6 +415,32 @@ function renderModel() {
   for (const o of model.observables) {
     facts.append(el("button", { type: "button", class: "fact", title: `observable, line ${o.line}`, onclick: () => showLine(o.line), text: `${o.name} = ${o.expr}` }));
   }
+
+  if (model.network) {
+    const net = model.network;
+    const params = Object.entries(net.params).map(([k, v]) => `${k}=${fmt(v)}`).join(", ");
+    facts.append(el("button", { type: "button", class: "fact network-fact", title: `network, line ${net.line}`, onclick: () => showLine(net.line) }, [
+      el("span", { class: "net-label", text: "network" }),
+      el("span", { text: `${net.generator}(${params})` }),
+    ]));
+  }
+
+  for (const attr of model.attributes || []) {
+    const bar = el("div", { class: "attr-bar" });
+    for (const cat of attr.categories) {
+      const pct = (cat.proportion * 100).toFixed(1);
+      bar.append(el("div", { class: "attr-seg", style: `width: ${pct}%`, title: `${cat.label}: ${pct}%`, "data-label": cat.label }));
+    }
+    const labels = el("div", { class: "attr-labels" });
+    for (const cat of attr.categories) {
+      labels.append(el("span", { text: `${cat.label} ${(cat.proportion * 100).toFixed(0)}%` }));
+    }
+    facts.append(el("div", { class: "fact attr-fact", onclick: () => showLine(attr.line) }, [
+      el("span", { class: "attr-name", text: `attribute ${attr.name}` }),
+      bar,
+      labels,
+    ]));
+  }
 }
 
 function describeFlows(sourceName, targetName, flows) {

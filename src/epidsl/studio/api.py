@@ -145,6 +145,21 @@ def describe(model: EpiModel) -> dict[str, Any]:
         "observables": [
             {"name": o.name, "expr": format_expr(o.expr), "line": o.line} for o in model.observables
         ],
+        "network": None
+        if model.network is None
+        else {
+            "generator": model.network.generator,
+            "params": dict(model.network.params),
+            "line": model.network.line,
+        },
+        "attributes": [
+            {
+                "name": a.name,
+                "categories": [{"label": lbl, "proportion": p} for lbl, p in a.categories],
+                "line": a.line,
+            }
+            for a in model.attributes
+        ],
         "diagnostics": [
             {
                 "code": d.code,
