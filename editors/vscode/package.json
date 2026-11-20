@@ -1,0 +1,37 @@
+{
+  "name": "epidsl",
+  "displayName": "EpiDSL",
+  "description": "Syntax highlighting, diagnostics, completion and go-to-definition for EpiDSL models",
+  "version": "0.1.0",
+  "publisher": "epidsl",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "epidsl",
+        "aliases": ["EpiDSL", "epidsl"],
+        "extensions": [".epidsl"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "title": "EpiDSL",
+      "properties": {
+        "epidsl.serverCommand": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["epidsl", "server"],
+          "description": "Command to start the EpiDSL language server. Use [\"uv\", \"run\", \"epidsl\", \"server\"] if epidsl is not on PATH."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^11.0.0"
+  }
+}

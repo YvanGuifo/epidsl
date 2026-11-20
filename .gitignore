@@ -6,6 +6,9 @@ __pycache__/
 .ruff_cache/
 dist/
 *.egg-info/
+editors/vscode/node_modules/
+editors/vscode/package-lock.json
+editors/vscode/*.vsix
 .DS_Store
 .env
 .env.*

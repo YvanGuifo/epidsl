@@ -8,6 +8,11 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Extension VS Code / Devin Desktop.** Client LSP pour les éditeurs compatibles
+  VS Code : diagnostics en temps réel, complétion et go-to-definition sur les
+  fichiers `.epidsl`, via le serveur `epidsl server`. La commande du serveur est
+  configurable (`epidsl.serverCommand`). Distribué sous `editors/vscode/`.
+
 - **Visualisation du réseau dans epidsl studio (D44).** `describe()` expose
   désormais deux nouvelles clés dans la réponse JSON de `/api/analyze` :
   `network` (générateur et paramètres, `null` pour les modèles non-réseau) et
