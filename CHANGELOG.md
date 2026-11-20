@@ -8,6 +8,13 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Smooth cubic interpolation `smoothstep(t, t0, t1)` (D35).** Returns 0 for
+  `t <= t0`, 1 for `t >= t1`, and `3s²–2s³` (where `s = (t–t0)/(t1–t0)`) in
+  between.  Unlike `ramp`, the derivative is 0 at both endpoints (C¹ continuous),
+  so there is no abrupt change of slope when the intervention starts or ends.  No
+  ODE breakpoints are injected (LSODA handles smooth kinks natively).  Example:
+  `examples/sir_smooth.epidsl`.
+
 - **Value-bounding function `clamp(x, lo, hi)` (D34).** Returns `lo` if
   `x < lo`, `hi` if `x > hi`, and `x` otherwise.  Useful for vaccination
   models where `clamp(vacc_rate * t, 0, 1)` guarantees coverage stays in

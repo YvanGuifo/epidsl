@@ -1062,6 +1062,48 @@ self-migration).  The `_stratify()` function gates the diagonal-skip on
 
 ---
 
+## D35 — Smooth cubic interpolation `smoothstep(t, t0, t1)`
+
+**Context.** `ramp(t, t0, t1)` is C⁰: its derivative jumps at `t0` and `t1`,
+creating kinks that LSODA must cross. For interventions that ramp up and down
+gradually (a lockdown implemented through daily communications, a school-closure
+policy that takes effect day by day), a smoother transition is more physically
+realistic and produces cleaner ODE trajectories.
+
+**Decision.** Add `smoothstep(t, t0, t1)` as a built-in function:
+- `t <= t0` → 0
+- `t >= t1` → 1
+- `t0 < t < t1` → `3s² – 2s³`, where `s = (t – t0) / (t1 – t0)`
+
+This is the standard cubic Hermite `smoothstep` from computer graphics (GLSL,
+HLSL) and numerical libraries. Its first derivative is 0 at both endpoints, so
+it is C¹ everywhere: no kink at `t0` or `t1`.
+
+**ODE breakpoints.** The function is C¹ continuous (smooth derivative); there are
+no discontinuities, only inflection points. LSODA degrades gracefully near the
+inflection point without injecting extra `t_eval` entries. `_discontinuity_breakpoints()`
+is **not** extended.
+
+**Cubic formula note.** `3s²–2s³ = s²(3–2s)` factored for numerical stability.
+At `s=0.5`: `3×0.25–2×0.125 = 0.5` (matches the linear ramp at the midpoint by
+symmetry — `test_smoothstep_midpoint` confirms this). At `s=0.25`:
+`3×0.0625–2×0.015625 = 0.15625` — strictly less than the linear value `0.25`,
+confirming the cubic is slower at first (ease-in/ease-out shape).
+
+**Measured value.** Growth rate before ramp (days 5–10) vs after (days 35–40)
+on the reference model: before > after, confirmed by `test_smoothstep_ode_epidemic_slows_during_ramp`.
+
+**Stochastic backends.** Same as `ramp`: rates are evaluated at each event time.
+
+**Alternatives considered.**
+- *`ramp` (linear)*: C⁰, adequate when the kink is tolerable.
+- *Logistic `1/(1+exp(-k*(t-t_mid)))`*: C∞ but never exactly 0 or 1; two extra
+  parameters (k and t_mid instead of t0, t1); asymmetric around the midpoint.
+- *Quintic smoothstep `6s⁵–15s⁴+10s³`*: C² everywhere, but overkill for
+  epidemiological use cases and harder to explain.
+
+---
+
 ## D34 — Value-bounding function `clamp(x, lo, hi)`
 
 **Context.** Rate expressions can produce values outside their physical range when

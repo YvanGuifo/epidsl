@@ -33,6 +33,16 @@ def _pulse(t: float, t0: float, t1: float) -> float:
     return 1.0 if t0 <= t < t1 else 0.0
 
 
+def _smoothstep(t: float, t0: float, t1: float) -> float:
+    """Cubic smooth interpolation: 0 for t<=t0, 1 for t>=t1, 3s²-2s³ in between."""
+    if t <= t0:
+        return 0.0
+    if t >= t1:
+        return 1.0
+    s = (t - t0) / (t1 - t0)
+    return s * s * (3.0 - 2.0 * s)
+
+
 def _clamp(x: float, lo: float, hi: float) -> float:
     """Clamp x to [lo, hi]: lo if x < lo, hi if x > hi, x otherwise."""
     if x < lo:
@@ -54,6 +64,7 @@ FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "step": (2, _step),
     "ramp": (3, _ramp),
     "pulse": (3, _pulse),
+    "smoothstep": (3, _smoothstep),
     "clamp": (3, _clamp),
 }
 
