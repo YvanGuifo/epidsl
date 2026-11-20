@@ -1,28 +1,30 @@
--- Stratifying an epidemic model by age through composition.
--- AgeSIR has one compartment per (status, age group) pair: S_young, S_old, ...
+-- Age-stratified SIR with a contact matrix — D30
+--
+-- Two age groups (young, old) interact through a 2×2 contact matrix.
+-- The rate beta_{i,j} governs transmission from group j to group i.
+-- Young individuals mix more intensely within their own group.
 
 model SIR {
-    semantics: [ODE, Gillespie]
-
-    compartment S = 990, I = 10, R = 0
-
-    parameter beta = 0.3 [1/day]
-    rate gamma = 0.1 [1/day]
-
-    flow S -> I : beta * S * I / N
+    semantics: [ODE]
+    compartment S = 900, I = 100, R = 0
+    rate beta  = 0.0003 [1/day]   -- placeholder, overridden by matrix below
+    rate gamma = 0.1    [1/day]
+    flow S -> I : beta * S * I
     flow I -> R : gamma * I
+    observe cases = incidence(S -> I)
 }
 
-model Age {
-    semantics: [ODE, Gillespie]
-
-    compartment young = 300, old = 700
-
-    rate aging = 0.002 [1/day]
-
-    flow young -> old : aging * young
+model AgeGroup {
+    semantics: [ODE]
+    compartment young = 600, old = 400
 }
 
 compose AgeSIR {
-    models: [SIR, Age]
+    models: [SIR, AgeGroup]
+    -- Contact matrix: beta_{i,j} = transmission rate from group j to group i.
+    -- Young-young contact is highest; cross-age contact is lower.
+    parameter beta by AgeGroup, AgeGroup = {
+        young, young: 0.0005, young, old: 0.0001,
+        old,  young: 0.0001, old,  old:  0.0003
+    } [1/day]
 }

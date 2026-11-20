@@ -8,6 +8,16 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Contact matrices for stratified transmission (D30).** `parameter beta by
+  Model, Model = { i, j: value, ... }` declares a contact-rate matrix in a
+  `compose` block.  A flow that uses such a parameter is automatically expanded
+  into the sum `Σ_j beta_{i,j} * S_i * I_j` over all strata of the second
+  model (the state met).  The parameter may be declared inline in the `compose`
+  block without a prior declaration in any component model.  All four dynamics
+  backends support the expansion unchanged.  Missing entries in a contact
+  matrix are an error (unlike sparse migration matrices where omitted entries
+  default to 0).  Example: `examples/sir_age.epidsl`.
+
 - **Reporting delay on observables (D29).** An observable may declare a
   reporting delay with `observe X = expr delay(d)`, where `d` is a number of
   days (or whatever the model's time unit is).  The backend shifts the output
@@ -78,6 +88,4 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Known limits
 
-- A contact matrix (a rate that depends on the strata of both parties) cannot be
-  expressed.
-- No reporting delay on observables.
+- *(No remaining known limits from v0.1.0 — resolved in Unreleased.)*

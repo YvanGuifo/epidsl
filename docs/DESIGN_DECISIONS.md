@@ -1013,5 +1013,54 @@ samples rather than the deterministic mean.  The shift is `O(n)` time and
 
 ---
 
+## D30 — Contact matrices for stratified transmission
+
+### Context
+
+Age-structured models commonly use a *contact matrix* C where C_{i,j} is the
+rate at which a susceptible of group i meets an infectious of group j.  The
+force of infection on group i is Σ_j C_{i,j} · I_j · S_i.
+
+### Decision
+
+`parameter beta by Model, Model = { i, j: v, ... }` in a `compose` block
+declares a 2-index matrix constant.  When a flow uses such a constant, the
+rate is automatically expanded to the contact sum over all states of the second
+index model.  All four existing backends receive the expanded plain model and
+need no modification.
+
+Two cases are supported:
+- **Case A.** `beta` is declared (as a scalar) in the component model and
+  overridden by the matrix in `compose`.
+- **Case B.** `beta` is declared inline only in `compose`, with no prior
+  declaration.  `flatten()` passes `stratified_names` as `allowed_undefined`
+  to the static checker so C3 does not fire on the component model before
+  stratification is applied.
+
+### Alternatives considered
+
+- **Explicit sum syntax** (`beta * S * sum(I_j by Age)`): more explicit but
+  requires new grammar and a new IR node; rejected because the matrix constant
+  already carries the same information and the implicit sum is the standard
+  epidemiological convention.
+- **External matrix file**: out of scope for the DSL; the inline dict is
+  sufficient for models with up to ~10 groups.
+
+### Diagonal entries
+
+Contact matrices require all n² entries, including the diagonal (self-group
+transmission).  Migration matrices omit the diagonal by convention (no
+self-migration).  The `_stratify()` function gates the diagonal-skip on
+`name in migrate_rates` to keep these two cases separate.
+
+### Consequences
+
+- No change to any existing model (the `by M, M` syntax is new).
+- The static check for undefined symbols (C3) is extended with an
+  `allowed_undefined` parameter, used only during composition.
+- `examples/sir_age.epidsl` demonstrates the feature.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

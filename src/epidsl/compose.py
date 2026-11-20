@@ -93,15 +93,16 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
         _fail(f"compose {composition.name} needs at least two models", composition)
     parts = [env[ref.name] for ref in composition.models]
 
-    for ref, part in zip(composition.models, parts, strict=True):
-        problems = errors(part)
-        if problems:
-            _fail(f"model '{part.name}' has errors: {problems[0].message}", ref)
-
     owner = _owners(composition, parts)
     index = {ref.name: i for i, ref in enumerate(composition.models)}
     entry = _entries(composition, parts, index)
+    # Names declared as stratified constants in the compose block may be referenced
+    # in component flows before stratification resolves them — allow them past C3.
+    stratified_names = frozenset(s.name for s in composition.stratified)
     for i, (ref, part) in enumerate(zip(composition.models, parts, strict=True)):
+        problems = errors(part, stratified_names)
+        if problems:
+            _fail(f"model '{part.name}' has errors: {problems[0].message}", ref)
         if any(flow.source is None for flow in part.flows):
             for j, other in enumerate(parts):
                 if j != i and j not in entry:
@@ -370,11 +371,12 @@ def _stratify(
                     declared,
                 )
         if name not in constants:
-            # New constant declared inline in the compose block (e.g. a migration matrix).
-            # Skip diagonal entries for matrix constants: they are never referenced by flows
-            # (migrate only generates off-diagonal flows), so creating them triggers C7.
+            # New constant declared inline in the compose block.
+            # For migration matrices, skip the diagonal: migrate only generates
+            # off-diagonal flows, so diagonal constants would trigger C7.
+            # Contact matrices need the diagonal (self-transmission within a group).
             for key in keys:
-                if matrix and len(key) == 2 and key[0] == key[1]:
+                if matrix and name in migrate_rates and len(key) == 2 and key[0] == key[1]:
                     continue
                 constants[generated[key]] = Constant(
                     generated[key],

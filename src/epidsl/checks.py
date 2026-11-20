@@ -43,8 +43,15 @@ class Diagnostic:
         return f"{self.line}:{self.column}: {self.severity.value} {self.code}: {self.message}"
 
 
-def check(model: EpiModel) -> list[Diagnostic]:
-    """Return every diagnostic for ``model``; an empty list means it is clean."""
+def check(
+    model: EpiModel, allowed_undefined: frozenset[str] = frozenset()
+) -> list[Diagnostic]:
+    """Return every diagnostic for ``model``; an empty list means it is clean.
+
+    ``allowed_undefined`` lists symbol names that may appear in expressions
+    without being declared — used by ``compose`` to allow symbols that will be
+    resolved by stratification (e.g. a matrix constant declared inline).
+    """
     found: list[Diagnostic] = []
 
     def error(code: str, message: str, node: object) -> None:
@@ -100,7 +107,7 @@ def check(model: EpiModel) -> list[Diagnostic]:
         for node in walk(expr):
             if isinstance(node, Sym):
                 used.add(node.name)
-                if node.name not in compartments | constants | BUILTIN_SYMBOLS:
+                if node.name not in compartments | constants | BUILTIN_SYMBOLS | allowed_undefined:
                     error("C3", f"undefined symbol '{node.name}'", node)
             elif isinstance(node, Call):
                 if node.func not in FUNCTIONS:
@@ -186,8 +193,10 @@ def check(model: EpiModel) -> list[Diagnostic]:
     return found
 
 
-def errors(model: EpiModel) -> list[Diagnostic]:
-    return [d for d in check(model) if d.severity is Severity.ERROR]
+def errors(
+    model: EpiModel, allowed_undefined: frozenset[str] = frozenset()
+) -> list[Diagnostic]:
+    return [d for d in check(model, allowed_undefined) if d.severity is Severity.ERROR]
 
 
 def check_semantics(model: EpiModel, requested: Semantics) -> Diagnostic | None:
