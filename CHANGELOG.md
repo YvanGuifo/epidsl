@@ -6,6 +6,8 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-20
+
 ### Added
 
 - **Fonction `neighbor_attr(state, attr_name, value)` pour le mélange hétérogène (D41).**
