@@ -14,6 +14,11 @@ State = NDArray[np.float64]
 Evaluator = Callable[[State, float], float]
 
 #: Built-in functions: name -> (arity, implementation).
+def _step(t: float, t0: float) -> float:
+    """Heaviside step: 0 for t < t0, 1 for t >= t0."""
+    return 1.0 if t >= t0 else 0.0
+
+
 FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "exp": (1, math.exp),
     "log": (1, math.log),
@@ -23,6 +28,7 @@ FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "abs": (1, abs),
     "min": (2, min),
     "max": (2, max),
+    "step": (2, _step),
 }
 
 #: Built-in symbols: total population and current time.

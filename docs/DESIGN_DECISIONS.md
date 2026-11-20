@@ -1062,5 +1062,46 @@ self-migration).  The `_stratify()` function gates the diagonal-skip on
 
 ---
 
+## D31 — Heaviside step function `step(t, t0)`
+
+**Context.** Many epidemiological interventions are discrete events: a lockdown
+starts on day 30, a vaccination campaign begins on week 10. Users need a clean
+way to express "rate changes at time t0" without splitting the model into two
+separate models or introducing a smoothed sigmoid.
+
+**Decision.** Add `step(t, t0)` as a built-in function returning 0 for `t < t0`
+and 1 for `t >= t0`. It is registered in `FUNCTIONS` with arity 2, so the static
+checker C3 validates its argument count. The boundary convention is closed on the
+right (`t >= t0`), consistent with the standard Heaviside definition.
+
+**ODE breakpoint injection.** LSODA is a continuous integrator; a sharp
+discontinuity at `t0` can cause it to take many tiny steps or accumulate error
+near the boundary. `_step_thresholds()` extracts every literal or constant `t0`
+from `step(t, t0)` calls in flow expressions. Those thresholds are added to
+`t_eval` via `np.unique(np.concatenate([user_grid, thresholds]))`, then the
+solution is trimmed back to the user-requested grid with `np.searchsorted`.
+Thresholds outside `(t_start, t_end)` are skipped. Complex expressions
+(e.g. `step(t, a+1)`) are silently ignored and the user relies on LSODA's
+adaptive steps.
+
+**Alternatives considered.**
+- *Smooth sigmoid `1 / (1 + exp(-k*(t-t0)))`*: avoids the discontinuity but
+  introduces an extra parameter `k` and makes threshold semantics fuzzy.
+- *Pre-scheduled events (callbacks in `solve_ivp`)*: more precise but requires
+  a richer IR and breaks the Gillespie and tau-leap backends.
+- *Two-segment ODE (run before and after t0)*: exact but non-compositional; the
+  user would need to chain two runs manually.
+
+**Stochastic backends.** Gillespie and tau-leap evaluate `step(t, t0)` at every
+event time, so they cross the threshold naturally at the first event after `t0`.
+No extra logic is needed.
+
+**Output shape invariant.** The output always has exactly `n_points` values,
+regardless of how many breakpoints are injected. The `test_step_ode_threshold_not_on_grid`
+test (t0=30.5, coarse grid with dt=10) explicitly checks `len(result.t) == 7`
+to guard against trimming regressions.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

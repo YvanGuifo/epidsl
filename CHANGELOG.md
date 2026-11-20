@@ -8,6 +8,14 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Heaviside step function for interventions (D31).** `step(t, t0)` returns 0
+  for `t < t0` and 1 for `t >= t0`, enabling time-triggered interventions such
+  as lockdowns and vaccination campaigns directly in rate expressions (e.g.
+  `beta * (1 - phi * step(t, 30)) * S * I`).  The ODE backend automatically
+  injects `t0` as an extra breakpoint in `t_eval` so LSODA crosses the
+  discontinuity cleanly, then trims the output back to the requested grid.
+  Example: `examples/sir_lockdown.epidsl`.
+
 - **Contact matrices for stratified transmission (D30).** `parameter beta by
   Model, Model = { i, j: value, ... }` declares a contact-rate matrix in a
   `compose` block.  A flow that uses such a parameter is automatically expanded

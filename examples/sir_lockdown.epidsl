@@ -1,0 +1,14 @@
+-- SIR with lockdown intervention using step(t, t0)
+-- Lockdown at day 30 reduces beta by 70%.
+-- R0_before = 0.0003 * 1000 / 0.1 = 3  (epidemic grows)
+-- R0_after  = 0.00009 * 1000 / 0.1 = 0.9 (epidemic declines)
+
+model SIR {
+    semantics: [ODE, Gillespie, TauLeap]
+    compartment S = 990, I = 10, R = 0
+    rate beta  = 0.0003    [1/day]
+    rate phi   = 0.7       [1]
+    rate gamma = 0.1       [1/day]
+    flow S -> I : beta * (1 - phi * step(t, 30)) * S * I
+    flow I -> R : gamma * I
+}
