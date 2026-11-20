@@ -1,0 +1,32 @@
+-- Modèle SIR avec matrice de mélange bilinéaire via neighbor_attr() — D41
+--
+-- Chaque agent reçoit un attribut de risque (Low=70 %, High=30 %).
+-- Le taux d'infection d'un agent S dépend du nombre de voisins I
+-- par niveau de risque :
+--
+--   flow S -> I : beta_low  * neighbor_attr(I, risk, Low)
+--              + beta_high * neighbor_attr(I, risk, High)
+--
+-- Un contact avec un voisin I High-risk est 5× plus infectieux qu'un
+-- contact avec un voisin I Low-risk, ce qui accélère l'épidémie par
+-- rapport à un modèle homogène.
+--
+-- Exécution : uv run epidsl run examples/sir_neighbor_attr.epidsl --t-end 50 --seed 42
+
+model SIR {
+    semantics: [Network]
+
+    compartment S = 90, I = 10, R = 0
+
+    attribute risk ~ categorical(Low=0.7, High=0.3)
+
+    rate beta_low  = 0.1   [1/contact/day]
+    rate beta_high = 0.5   [1/contact/day]
+    rate gamma     = 0.1   [1/day]
+
+    network watts_strogatz(k=6, rewire=0.1)
+
+    flow S -> I : beta_low  * neighbor_attr(I, risk, Low)
+               + beta_high * neighbor_attr(I, risk, High)
+    flow I -> R : gamma
+}

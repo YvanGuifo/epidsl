@@ -21,6 +21,10 @@ C-A2 attr() with wrong arity                   error
 C-A3 attr() references undeclared attribute     error
 C-I1 interact endpoint is not a compartment    error
 C-I2 interact used without Network semantics   error
+C-NA1 neighbor_attr() with wrong arity         error
+C-NA2 neighbor_attr() without Network semantics error
+C-NA3 neighbor_attr() state is not a compartment error
+C-NA4 neighbor_attr() attribute is not declared  error
 """
 
 from __future__ import annotations
@@ -118,10 +122,10 @@ def check(
     )
 
     def _attr_arg_syms(expr: Expr) -> frozenset[str]:
-        """Return names of Sym nodes that are direct arguments of attr() calls."""
+        """Return names of Sym nodes that are direct arguments of attr() or neighbor_attr() calls."""
         names: set[str] = set()
         for node in walk(expr):
-            if isinstance(node, Call) and node.func == "attr":
+            if isinstance(node, Call) and node.func in ("attr", "neighbor_attr"):
                 for arg in node.args:
                     if isinstance(arg, Sym):
                         names.add(arg.name)
@@ -161,6 +165,30 @@ def check(
                             f"contacts() takes exactly 1 argument (a compartment name), got {len(node.args)}",
                             node,
                         )
+                elif node.func == "neighbor_attr":
+                    if len(node.args) != 3:
+                        error(
+                            "C-NA1",
+                            f"neighbor_attr() takes exactly 3 arguments (state, attr_name, value), got {len(node.args)}",
+                            node,
+                        )
+                    elif Semantics.NETWORK not in model.semantics:
+                        error("C-NA2", "neighbor_attr() can only be used in models with Network semantics", node)
+                    else:
+                        state_arg = node.args[0]
+                        if isinstance(state_arg, Sym) and state_arg.name not in compartments:
+                            error(
+                                "C-NA3",
+                                f"neighbor_attr() state '{state_arg.name}' is not a compartment",
+                                node,
+                            )
+                        attr_name_arg = node.args[1]
+                        if isinstance(attr_name_arg, Sym) and attr_name_arg.name not in declared_attributes:
+                            error(
+                                "C-NA4",
+                                f"neighbor_attr() references undeclared attribute '{attr_name_arg.name}'",
+                                node,
+                            )
                 elif node.func not in FUNCTIONS:
                     error("C3", f"unknown function '{node.func}'", node)
                 elif len(node.args) != FUNCTIONS[node.func][0]:

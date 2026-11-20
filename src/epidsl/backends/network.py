@@ -91,13 +91,15 @@ def _eval_expr(
     t: float,
     contact_counts: Mapping[str, int],
     agent_attr_values: Mapping[str, str] | None = None,
+    neighbor_attr_counts: Mapping[tuple[str, str, str], int] | None = None,
 ) -> float:
     """Recursively evaluate expr; contact_counts maps compartment name → neighbour count.
 
     agent_attr_values maps attribute name → current agent's label (e.g. {"risk": "High"}).
+    neighbor_attr_counts maps (state, attr_name, value) → count of such neighbours.
     """
     def _rec(e: Expr) -> float:
-        return _eval_expr(e, constants, compartment_index, state_vec, t, contact_counts, agent_attr_values)
+        return _eval_expr(e, constants, compartment_index, state_vec, t, contact_counts, agent_attr_values, neighbor_attr_counts)
 
     match expr:
         case Num(value):
@@ -128,6 +130,10 @@ def _eval_expr(
             if agent_attr_values is None:
                 return 0.0
             return 1.0 if agent_attr_values.get(attr_name) == value_name else 0.0
+        case Call("neighbor_attr", (Sym(state_name), Sym(attr_name), Sym(value_name))):
+            if neighbor_attr_counts is None:
+                return 0.0
+            return float(neighbor_attr_counts.get((state_name, attr_name, value_name), 0))
         case Call(func, args):
             _, impl = FUNCTIONS[func]
             return float(impl(*(_rec(a) for a in args)))
@@ -144,6 +150,34 @@ def _has_contacts(expr: Expr) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _compute_neighbor_attr_counts(
+    agent: int,
+    neighbours: list[list[int]],
+    agent_states: NDArray[np.int32],
+    compartment_names: list[str],
+    attr_index_arrays: dict[str, NDArray[np.int32]],
+    attr_label_maps: dict[str, list[str]],
+) -> dict[tuple[str, str, str], int]:
+    """Compute neighbor_attr counts for a given agent.
+
+    Returns a dict mapping (state_name, attr_name, value_name) → count of neighbours
+    simultaneously in that state and with that attribute value.
+    """
+    nbr_list = neighbours[agent]
+    if not nbr_list:
+        return {}
+    nbr_arr = np.array(nbr_list, dtype=np.int32)
+    nbr_states = agent_states[nbr_arr]
+    result: dict[tuple[str, str, str], int] = {}
+    for state_idx, state_name in enumerate(compartment_names):
+        state_mask = nbr_states == state_idx
+        for attr_name, label_list in attr_label_maps.items():
+            attr_vals = attr_index_arrays[attr_name][nbr_arr]
+            for vi, value_name in enumerate(label_list):
+                result[(state_name, attr_name, value_name)] = int(np.sum(state_mask & (attr_vals == vi)))
+    return result
+
+
 def _agent_rate(
     agent: int,
     agent_state: int,
@@ -158,6 +192,7 @@ def _agent_rate(
     state_vec: NDArray[np.float64],
     t: float,
     agent_attr_values: Mapping[str, str] | None = None,
+    neighbor_attr_counts: Mapping[tuple[str, str, str], int] | None = None,
 ) -> float:
     """Return the event rate for agent ``agent`` firing flow source→target.
 
@@ -171,7 +206,7 @@ def _agent_rate(
     }
     return max(
         0.0,
-        _eval_expr(flow_expr, constants, compartment_index, state_vec, t, contact_counts, agent_attr_values),
+        _eval_expr(flow_expr, constants, compartment_index, state_vec, t, contact_counts, agent_attr_values, neighbor_attr_counts),
     )
 
 
@@ -284,10 +319,13 @@ class NetworkBackend:
                         name: attr_label_maps[name][int(attr_index_arrays[name][u])]
                         for name in attr_label_maps
                     } if attr_label_maps else None
+                    nbr_attr_counts = _compute_neighbor_attr_counts(
+                        u, neighbours, agent_states, compartment_names, attr_index_arrays, attr_label_maps,
+                    ) if attr_label_maps else None
                     rate = _agent_rate(
                         u, int(agent_states[u]), f_src, f_tgt, f_expr,
                         constants, compartment_index, compartment_names,
-                        agent_states, neighbours, sv, t, agent_attrs,
+                        agent_states, neighbours, sv, t, agent_attrs, nbr_attr_counts,
                     )
                     if rate > 0.0:
                         all_events.append((u, f_idx, rate))

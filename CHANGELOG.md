@@ -8,6 +8,15 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Fonction `neighbor_attr(state, attr_name, value)` pour le mélange hétérogène (D41).**
+  Renvoie le nombre de voisins dans le compartiment `state` ET dont l'attribut `attr_name`
+  vaut `value`.  Combinée avec `attr()` (D39) et `contacts()` (D38), elle permet d'exprimer
+  une matrice de mélange bilinéaire complète dans une seule expression de taux :
+  `flow S -> I : beta_low * neighbor_attr(I, risk, Low) + beta_high * neighbor_attr(I, risk, High)`.
+  Réservée à la sémantique Network.  Nouveaux contrôles statiques : C-NA1 (arité incorrecte),
+  C-NA2 (hors sémantique Network), C-NA3 (état inconnu), C-NA4 (attribut non déclaré).
+  Exemple : `examples/sir_neighbor_attr.epidsl`.
+
 - **Règles de transition agent-agent `interact A + B -> A' + B' : expr` (D40).**
   Un flux de paire déclenche deux transitions simultanées : l'agent focal passe de A à A'
   et un voisin choisi aléatoirement parmi ses voisins en état B passe à B'.  Le taux pour

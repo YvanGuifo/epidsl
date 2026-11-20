@@ -1498,6 +1498,51 @@ consultation O(nb_attributs) supplémentaires par événement.  Pour le modèle
 
 ---
 
+### D41 — Fonction `neighbor_attr(state, attr_name, value)` (2026-11-20)
+
+**Problème.** `contacts(X)` (D38) compte les voisins dans l'état X et `attr(name, val)`
+(D39) donne la valeur de l'attribut de l'agent focal.  Mais il n'existe pas de moyen
+d'exprimer « combien de voisins I ont l'attribut risk=High ? », ce qui interdit les
+matrices de mélange bilinéaires au sein d'un seul flux.
+
+**Décision.** Ajouter la fonction `neighbor_attr(state, attr_name, value)` aux expressions
+de taux des modèles Network.  Elle renvoie un entier : le nombre de voisins immédiats de
+l'agent focal qui sont à la fois dans le compartiment `state` ET dont l'attribut `attr_name`
+vaut `value`.
+
+```
+flow S -> I : beta_low  * neighbor_attr(I, risk, Low)
+           + beta_high * neighbor_attr(I, risk, High)
+```
+
+Cela exprime une matrice de mélange bilinéaire complète dans une seule expression de taux,
+sans stratification explicite du modèle.
+
+**Implémentation.**
+
+- Pas de changement de grammaire : `neighbor_attr(...)` est un appel générique traité comme
+  `contacts()` et `attr()` — comme cas spéciaux dans `checks.py` et `network.py`.
+- Checks : les trois arguments sont des `Sym` exemptés de la vérification C3 (tout comme
+  les arguments de `attr()`).  Nouveaux contrôles C-NA1 à C-NA4.
+- Backend : nouvelle fonction `_compute_neighbor_attr_counts(agent, ...)` qui précompute
+  un dict `(state, attr_name, value) → int` par agent via NumPy vectorisé sur les voisins.
+  Complexité : O(n_voisins × n_états × n_attributs × n_valeurs).
+
+**Tableau des vérifications.**
+
+| Code  | Condition                                     | Niveau |
+|-------|-----------------------------------------------|--------|
+| C-NA1 | neighbor_attr() avec ≠ 3 arguments            | erreur |
+| C-NA2 | neighbor_attr() hors sémantique Network        | erreur |
+| C-NA3 | premier argument n'est pas un compartiment    | erreur |
+| C-NA4 | deuxième argument n'est pas un attribut déclaré| erreur |
+
+**Performances.** ~0,41 s pour N=100 agents, Watts-Strogatz k=6, t_end=50 (boucle
+pure Python ; coût supplémentaire par rapport à D40 : O(n_voisins × n_attributs × n_valeurs)
+pour chaque agent éligible à chaque pas).
+
+---
+
 ### D40 — Règles de transition agent-agent (`interact`) (2026-11-20)
 
 **Problème.** Les flux conventionnels (`flow S -> I : beta * contacts(I)`)
