@@ -143,6 +143,16 @@ def observe(
                 ) from error
         if rng is not None and observable.noise is not None:
             values = _apply_noise(observable.noise, values, rng)
+        if observable.delay > 0 and len(t) > 1:
+            dt = float(t[-1] - t[0]) / (len(t) - 1)
+            steps = int(round(observable.delay / dt))
+            if steps >= len(values):
+                values = np.zeros_like(values)
+            elif steps > 0:
+                shifted = np.empty_like(values)
+                shifted[:steps] = 0.0
+                shifted[steps:] = values[:-steps]
+                values = shifted
         observed[observable.name] = values
     return observed
 

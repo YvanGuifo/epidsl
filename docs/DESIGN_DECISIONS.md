@@ -958,5 +958,60 @@ matrices, the existing "has no value for …" error is preserved.
 
 ---
 
+## D29 — Reporting delay on observables
+
+### Context
+
+Epidemiological time series are rarely observed instantaneously.  Hospital
+admission data, lab-confirmed cases, or death reports all lag the true
+infection event by a characteristic delay (1–21 days depending on the
+disease and the reporting system).  Without modelling this lag, calibration
+fits the wrong phase of the epidemic curve and produces biased parameter
+estimates.
+
+### Options
+
+| Option | Mechanics | Drawbacks |
+|---|---|---|
+| External post-processing | Shift the output array in calling code | Invisible to the DSL; calibration still fits the unshifted series |
+| Delay-differential equation | True DDE solver | Requires a new solver, far heavier than a time shift |
+| **Time-shift of the output series** | Shift observable array by `d` steps, zero-pad head | No solver change needed; correct for calibration when observations are aligned |
+
+### Decision: `observe NAME = expr delay(d)`
+
+An optional `delay(d)` clause on an `observe` statement post-processes
+the observable time series before it is returned to the caller (CLI, calibration
+engine, Studio).  The semantics:
+
+- the value at output time `t[k]` in the **delayed** series equals the
+  value at `t[k - d]` in the undelayed series;
+- time steps before `t = d` are set to 0 (no information before the
+  simulation starts);
+- `d` is interpreted in the model's time unit (usually days);
+- the number of steps shifted is `round(d / dt)` where `dt` is the
+  output time step.
+
+**Negative delays** are rejected by check C14 at model-check time.
+
+The clause is order-independent with the noise distribution:
+`observe X = expr ~ poisson() delay(7)` and
+`observe X = expr delay(7) ~ poisson()` are equivalent (grammar
+places `noise` before `delay`; both are optional).
+
+**Implementation.** The shift is applied in `backends/__init__.py::observe()`
+after noise sampling, so a delayed stochastic observable shifts the drawn
+samples rather than the deterministic mean.  The shift is `O(n)` time and
+`O(n)` space.
+
+### Consequences
+
+- No change to any existing model (default `delay = 0.0` is a no-op).
+- Calibration with `delay(d)` aligns the simulated curve to data shifted by
+  `d` days, without manual pre-processing of the data.
+- Check C14 produces a structured diagnostic for `delay(-1)`, consistent
+  with the other check codes.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

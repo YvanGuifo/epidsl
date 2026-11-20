@@ -186,6 +186,7 @@ class Observable:
     line: int = _pos()
     column: int = _pos()
     noise: NoiseDistribution | None = None
+    delay: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

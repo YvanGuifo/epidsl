@@ -16,9 +16,10 @@ rate: "rate" NAME "=" signed [UNIT]
 
 flow: "flow" [NAME] ARROW [NAME] ":" _expr
 
-observe: "observe" NAME "=" _expr [noise]
+observe: "observe" NAME "=" _expr [noise] [delay_clause]
 noise: "~" NAME "(" [noise_arg ("," noise_arg)*] ")"
 noise_arg: signed | NAME
+delay_clause: "delay" "(" signed ")"
 
 semantics: "semantics" ":" "[" NAME ("," NAME)* "]"
 

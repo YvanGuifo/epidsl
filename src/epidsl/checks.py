@@ -13,6 +13,7 @@ C10 backend not declared in semantics          error
 C11 ill-defined prior, or value outside it     error
 C12 incidence in a flow rate, or of no flow    error
 C13 ill-defined noise distribution             error
+C14 negative reporting delay                   error
 """
 
 from __future__ import annotations
@@ -156,6 +157,8 @@ def check(model: EpiModel) -> list[Diagnostic]:
             problem = observable.noise.problem()
             if problem is not None:
                 error("C13", f"noise of '{observable.name}': {problem}", observable)
+        if observable.delay < 0:
+            error("C14", f"observable '{observable.name}': delay must be non-negative", observable)
 
     has_flows = len(model.flows) > 0
     for compartment in model.compartments:

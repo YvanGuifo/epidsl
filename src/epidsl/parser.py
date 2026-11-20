@@ -190,8 +190,17 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             **_at(source or arrow),
         )
 
-    def observe(self, name: Token, expr: Expr, noise: NoiseDistribution | None = None) -> Observable:
-        return Observable(str(name), expr, **_at(name), noise=noise)
+    def observe(
+        self,
+        name: Token,
+        expr: Expr,
+        noise: NoiseDistribution | None = None,
+        delay_clause: float | None = None,
+    ) -> Observable:
+        return Observable(str(name), expr, **_at(name), noise=noise, delay=delay_clause or 0.0)
+
+    def delay_clause(self, value: float) -> float:
+        return value
 
     def noise(self, dist: Token, *args: float | Token | None) -> NoiseDistribution:
         if dist not in ("poisson", "normal", "negbinomial"):

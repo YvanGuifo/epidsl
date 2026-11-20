@@ -8,6 +8,13 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Reporting delay on observables (D29).** An observable may declare a
+  reporting delay with `observe X = expr delay(d)`, where `d` is a number of
+  days (or whatever the model's time unit is).  The backend shifts the output
+  time series right by `d` days, zero-padding the leading window.  Negative
+  delays are rejected by check C14.  The clause may be combined with a noise
+  distribution: `observe X = expr ~ poisson() delay(7)`.
+
 - **Sparse migration matrices (D28).** Entries omitted from a `by M, M`
   matrix used in a `migrate` statement now default to 0 (no edge), so only
   non-zero travel rates need to be listed.  The dense syntax remains valid.
