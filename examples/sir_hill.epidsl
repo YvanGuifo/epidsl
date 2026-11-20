@@ -1,0 +1,17 @@
+-- SIR with hospital saturation using hill(I, k, n)
+-- Recovery rate decreases as hospitals approach capacity.
+-- hill(I, 50, 2) ≈ 0 when I << 50, ≈ 1 when I >> 50.
+-- Effective gamma = gamma_lo * (1 + (1 - hill(I, k_hosp, n_hill)))
+--   → 0.2 /day when hospitals are empty (I ≈ 0)
+--   → 0.1 /day when hospitals are saturated (I → ∞)
+
+model SIR {
+    semantics: [ODE, Gillespie, TauLeap]
+    compartment S = 990, I = 10, R = 0
+    rate beta      = 0.0003  [1/day]
+    rate gamma_lo  = 0.1     [1/day]
+    rate k_hosp    = 50      [1]
+    rate n_hill    = 2       [1]
+    flow S -> I : beta * S * I
+    flow I -> R : gamma_lo * (1 + (1 - hill(I, k_hosp, n_hill))) * I
+}

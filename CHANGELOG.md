@@ -8,6 +8,13 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Hill saturation function `hill(x, k, n)` (D36).** Returns `xⁿ / (kⁿ + xⁿ)`:
+  0 at `x=0`, 0.5 at `x=k` (the half-saturation constant), and approaching 1 as
+  `x → ∞`.  For `n=1`: standard Michaelis-Menten kinetics.  Useful for modelling
+  hospital overcrowding, immune response saturation, and dose-response
+  relationships in rate expressions.  No ODE breakpoints are injected (continuous
+  function).  Example: `examples/sir_hill.epidsl`.
+
 - **Smooth cubic interpolation `smoothstep(t, t0, t1)` (D35).** Returns 0 for
   `t <= t0`, 1 for `t >= t1`, and `3s²–2s³` (where `s = (t–t0)/(t1–t0)`) in
   between.  Unlike `ramp`, the derivative is 0 at both endpoints (C¹ continuous),

@@ -1062,6 +1062,54 @@ self-migration).  The `_stratify()` function gates the diagonal-skip on
 
 ---
 
+## D36 — Hill saturation function `hill(x, k, n)`
+
+**Context.** Many epidemiological processes saturate: hospital capacity limits
+the quality of care; immune response reaches a ceiling; vaccine dose-response
+levels off.  These are captured by the Hill equation (Hill 1910), standard in
+pharmacokinetics and mathematical biology.  Without `hill()` users would need to
+write `x^n / (k^n + x^n)` inline, which is verbose and hides the semantic intent.
+
+**Decision.** Add `hill(x, k, n)` as a built-in function:
+
+```
+hill(x, k, n) = xⁿ / (kⁿ + xⁿ)
+```
+
+- `hill(0, k, n) = 0` (guard: `x <= 0` returns 0 to avoid `0^0` ambiguity)
+- `hill(k, k, n) = 0.5` (k is the half-saturation or EC₅₀ constant)
+- `hill(x, k, n) → 1` as `x → ∞`
+- For `n=1`: standard Michaelis-Menten / hyperbolic saturation
+- For large `n`: approaches a step function at `x=k`
+
+Registered in `FUNCTIONS` with arity 3. Arguments: `x` (the quantity driving
+saturation), `k` (half-saturation constant), `n` (Hill coefficient / cooperativity).
+
+**ODE breakpoints.** The function is C∞ everywhere for `x > 0`; no
+discontinuities. `_discontinuity_breakpoints()` is **not** extended.
+
+**Guard at x ≤ 0.** `x^n` with `n < 1` (fractional cooperativity) is defined
+mathematically but potentially NaN for negative x in floating-point. The guard
+`if x <= 0: return 0.0` matches the biological interpretation (no substrate →
+no effect) and avoids domain errors in the ODE solver.
+
+**Measured properties (reference model, `k=50`, `n=2`):**
+- `hill(0, 50, 2)` = 0.0 exactly
+- `hill(50, 50, 2)` = 0.5 exactly (by algebraic identity)
+- `hill(1e9, 50, 2)` > 0.9999999
+- Strictly monotone on `[0.1, 200]` (200 uniformly-spaced points, all diffs > 0)
+
+**Stochastic backends.** Evaluated at each event time. No special handling.
+
+**Alternatives considered.**
+- *Inline expression `x^n / (k^n + x^n)`*: works but verbose and opaque.
+- *`michaelis(x, k)` for n=1 only*: too restrictive; n > 1 (cooperativity) is
+  common in immunological models.
+- *`logistic(x)` alias*: logistic `1/(1+exp(-x))` is a different function; using
+  the same name would create confusion.
+
+---
+
 ## D35 — Smooth cubic interpolation `smoothstep(t, t0, t1)`
 
 **Context.** `ramp(t, t0, t1)` is C⁰: its derivative jumps at `t0` and `t1`,

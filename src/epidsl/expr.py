@@ -33,6 +33,14 @@ def _pulse(t: float, t0: float, t1: float) -> float:
     return 1.0 if t0 <= t < t1 else 0.0
 
 
+def _hill(x: float, k: float, n: float) -> float:
+    """Hill saturation: x^n / (k^n + x^n). Returns 0 at x=0, 0.5 at x=k, →1 as x→∞."""
+    if x <= 0.0:
+        return 0.0
+    xn = x ** n
+    return xn / (k ** n + xn)
+
+
 def _smoothstep(t: float, t0: float, t1: float) -> float:
     """Cubic smooth interpolation: 0 for t<=t0, 1 for t>=t1, 3s²-2s³ in between."""
     if t <= t0:
@@ -64,6 +72,7 @@ FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "step": (2, _step),
     "ramp": (3, _ramp),
     "pulse": (3, _pulse),
+    "hill": (3, _hill),
     "smoothstep": (3, _smoothstep),
     "clamp": (3, _clamp),
 }
