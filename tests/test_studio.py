@@ -147,7 +147,9 @@ def test_three_models_put_the_first_in_columns() -> None:
 
 
 def test_diagnostics_and_errors_are_reported() -> None:
-    m = described("model M {\n compartment S = 1\n rate g = 1\n flow S -> : nope * g * S\n}", "M")
+    m = described(
+        "model M {\n compartment S = 9, I = 1\n rate g = 1\n flow S -> I : nope * g * S\n}", "M"
+    )
     assert [(d["code"], d["severity"], d["line"]) for d in m["diagnostics"]] == [
         ("C5", "warning", 3),
         ("C3", "error", 4),

@@ -8,11 +8,11 @@ C5  rate or parameter without a unit           warning
 C6  negative or non-finite declared value      error
 C7  unused compartment, rate or parameter      warning
 C8  declaration shadows a reserved name        error
+C9  open flows without a counterpart           warning
+C10 backend not declared in semantics          error
 C11 ill-defined prior, or value outside it     error
 C12 incidence in a flow rate, or of no flow    error
 C13 ill-defined noise distribution             error
-
-(C9 and C10 are reserved for mass conservation and undeclared semantics.)
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from epidsl.expr import BUILTIN_SYMBOLS, FUNCTIONS, RESERVED, walk
-from epidsl.ir import Call, Compartment, Constant, EpiModel, Expr, Incidence, Observable, Sym
+from epidsl.ir import Call, Compartment, Constant, EpiModel, Expr, Incidence, Observable, Semantics, Sym
 
 
 class Severity(Enum):
@@ -165,11 +165,40 @@ def check(model: EpiModel) -> list[Diagnostic]:
         if constant.name not in used:
             warning("C7", f"{constant.kind} '{constant.name}' is never used", constant)
 
+    inflows = [f for f in model.flows if f.source is None]
+    outflows = [f for f in model.flows if f.target is None]
+    if inflows and not outflows:
+        warning(
+            "C9",
+            "model has inflows but no outflows; total population grows without bound",
+            inflows[0],
+        )
+    elif outflows and not inflows:
+        warning(
+            "C9",
+            "model has outflows but no inflows; total population decays to zero",
+            outflows[0],
+        )
+
     return found
 
 
 def errors(model: EpiModel) -> list[Diagnostic]:
     return [d for d in check(model) if d.severity is Severity.ERROR]
+
+
+def check_semantics(model: EpiModel, requested: Semantics) -> Diagnostic | None:
+    """C10: return an error diagnostic when ``requested`` is not in the model's semantics."""
+    if requested in model.semantics:
+        return None
+    declared = ", ".join(s.value for s in model.semantics)
+    return _diagnostic(
+        "C10",
+        Severity.ERROR,
+        f"model '{model.name}' does not declare {requested.value} semantics "
+        f"(declared: {declared or 'none'})",
+        model,
+    )
 
 
 def _diagnostic(code: str, severity: Severity, message: str, node: object) -> Diagnostic:

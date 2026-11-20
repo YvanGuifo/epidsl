@@ -526,6 +526,8 @@ trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 | C6 | error | An initial value is negative, or a declared value is not finite. |
 | C7 | warning | A compartment, rate or parameter is never used. |
 | C8 | error | A declaration reuses a reserved name (`N`, `t`, or a function name). |
+| C9 | warning | A model has inflows but no outflows, or outflows but no inflows (unbounded population growth or decay). Demographic models with both are not warned. |
+| C10 | error | The backend requested on the CLI (`--method`) is not listed in the model's `semantics`. |
 | C11 | error | A prior is ill-defined (bounds in the wrong order, non-positive `loguniform` bound or standard deviation), or the parameter's value lies outside it. |
 | C12 | error | `incidence` is used in a flow rate, or no flow has the endpoints it names. |
 

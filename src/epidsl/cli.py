@@ -16,14 +16,20 @@ from epidsl.backends.gillespie import GillespieBackend
 from epidsl.backends.ode import ODEBackend
 from epidsl.backends.tau_leap import TauLeapBackend
 from epidsl.calibration import CalibrationResult, calibrate, read_observations
-from epidsl.checks import Severity, check
+from epidsl.checks import Severity, check, check_semantics
 from epidsl.ensemble import EnsembleResult, run_ensemble
 from epidsl.errors import EpiError
-from epidsl.ir import EpiModel, SimulationConfig
+from epidsl.ir import EpiModel, Semantics, SimulationConfig
 from epidsl.parser import parse
 from epidsl.studio.server import make_server
 
 _METHODS = ("ode", "gillespie", "tau-leap")
+
+_METHOD_SEMANTICS: dict[str, Semantics] = {
+    "ode": Semantics.ODE,
+    "gillespie": Semantics.GILLESPIE,
+    "tau-leap": Semantics.TAU_LEAP,
+}
 
 
 def _backend(method: str, epsilon: float | None) -> Backend:
@@ -124,6 +130,10 @@ def _calibrate(args: argparse.Namespace) -> int:
     model = _select(args)
     if model is None:
         return 1
+    diag = check_semantics(model, _METHOD_SEMANTICS[args.method])
+    if diag is not None:
+        print(f"{args.file}:{diag}", file=sys.stderr)
+        return 1
     try:
         observations = read_observations(args.data)
     except OSError as error:
@@ -164,6 +174,10 @@ def _calibrate(args: argparse.Namespace) -> int:
 def _run(args: argparse.Namespace) -> int:
     model = _select(args)
     if model is None:
+        return 1
+    diag = check_semantics(model, _METHOD_SEMANTICS[args.method])
+    if diag is not None:
+        print(f"{args.file}:{diag}", file=sys.stderr)
         return 1
     try:
         backend = _backend(args.method, args.epsilon)

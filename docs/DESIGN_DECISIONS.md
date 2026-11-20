@@ -760,5 +760,63 @@ are conserved exactly (integer counts).  Tested in
 
 ---
 
+## D25 — Static checks C9 and C10: mass conservation and backend semantics (2026-11-20)
+
+### Context
+
+Two categories of modelling error had no static diagnostic before this tranche:
+
+1. **Open flows without a counterpart.** A model with inflows (`flow -> X`) but no
+   outflows, or outflows (`flow X ->`) but no inflows, has an unbounded growth or decay
+   that the author may not have intended.  This was silently accepted at parse time and
+   only became visible at runtime when the trajectory exploded or collapsed.
+
+2. **Requesting a backend the model does not declare.** When a model's `semantics` list
+   does not include the method requested on the CLI (e.g. `epidsl run --method gillespie`
+   on an ODE-only model), the runtime raised a `ValueError` deep inside the simulation
+   engine — after potentially loading data, running checks, and printing other diagnostics.
+   There was no early, structured diagnostic.
+
+### Decision: C9 — mass conservation warning
+
+`check()` emits a **warning** when a model has open inflows but no outflows, or open
+outflows but no inflows.  Demographic models that intentionally have both are not warned.
+
+```
+warning C9: model has inflows but no outflows; total population grows without bound
+warning C9: model has outflows but no inflows; total population decays to zero
+```
+
+A **warning** (not an error) was chosen because open flows are a valid modelling
+primitive (immigration, mortality without replacement).  The author can suppress the
+warning with `--strict false` or by acknowledging it.  Strict mode (`--strict`) turns
+it into an error.
+
+### Decision: C10 — backend not declared in semantics (error)
+
+A new function `check_semantics(model, requested: Semantics) -> Diagnostic | None` is
+called by `_run()` and `_calibrate()` in `cli.py` immediately after loading and checking
+the model, before the simulation starts.  It returns a structured **error** diagnostic
+(not a `ValueError`) when the requested backend is not in the model's `semantics` list:
+
+```
+error C10: model 'SIR' does not declare gillespie semantics (declared: ode)
+```
+
+**Why a separate function, not part of `check()`?**  `epidsl check` does not know which
+backend the user will request; that information only exists at `run`/`calibrate` time.
+Putting C10 inside `check()` would require passing the backend to a function that is
+otherwise backend-agnostic.  The separate `check_semantics` keeps the concerns apart
+and is easy to call from any entry point that knows the requested backend.
+
+### Why errors are reported before the simulation starts
+
+Both C9 and C10 follow the principle of "fail early with a clear message".  The
+diagnostic carries source position (line and column), so the author can jump directly
+to the offending declaration.  A `ValueError` from deep in a backend gives no position
+and forces the author to infer the cause from a Python traceback.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

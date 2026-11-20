@@ -15,6 +15,13 @@ First version, not yet published.
   and block comments.
 - **Static checks** C1–C8, C11 and C12, with source positions; `--strict` turns
   warnings into errors.
+- **C9 — open flows without a counterpart.** Warning when a model has inflows but no
+  outflows, or outflows but no inflows (unbounded growth or decay).  Demographic models
+  with both are not warned.
+- **C10 — backend not declared in `semantics`.** Error when `epidsl run` or
+  `epidsl calibrate` requests a backend (`ode`, `gillespie`, `tau-leap`) that the
+  model's `semantics` list does not include.  Replaces a `ValueError` from deep in
+  the simulation engine with a structured diagnostic at CLI time.
 - **Composition.** `compose` blocks: product of models, `sync` rules, constants
   stratified with `by`, contact matrices with `by X, X`, entry states with `enter`,
   and constants and observables declared in the block.

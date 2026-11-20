@@ -65,12 +65,12 @@ def test_prior_is_parsed() -> None:
 
 def test_unknown_distribution_is_a_syntax_error() -> None:
     with pytest.raises(EpiSyntaxError, match="unknown distribution 'gamma'"):
-        parse("model M { compartment A = 1  parameter p = 1 prior gamma(1, 2)  flow A -> : p * A }")
+        parse("model M { compartment A = 1, B = 0  parameter p = 1 prior gamma(1, 2)  flow A -> B : p * A }")
 
 
 def test_rate_cannot_have_a_prior() -> None:
     with pytest.raises(EpiSyntaxError):
-        parse("model M { compartment A = 1  rate p = 1 prior uniform(0, 2)  flow A -> : p * A }")
+        parse("model M { compartment A = 1, B = 0  rate p = 1 prior uniform(0, 2)  flow A -> B : p * A }")
 
 
 @pytest.mark.parametrize(
@@ -84,7 +84,7 @@ def test_rate_cannot_have_a_prior() -> None:
     ],
 )
 def test_c11_invalid_prior(declaration: str, fragment: str) -> None:
-    m = model(f"model M {{ compartment A = 1  {declaration} [1/day]  flow A -> : p * A }}")
+    m = model(f"model M {{ compartment A = 1, B = 0  {declaration} [1/day]  flow A -> B : p * A }}")
     (diagnostic,) = check(m)
     assert (diagnostic.code, diagnostic.severity) == ("C11", Severity.ERROR)
     assert fragment in diagnostic.message
@@ -93,8 +93,8 @@ def test_c11_invalid_prior(declaration: str, fragment: str) -> None:
 def test_valid_priors_are_clean() -> None:
     for prior in ("uniform(0, 2)", "loguniform(0.5, 2)", "normal(3, 2)"):
         m = model(
-            f"model M {{ compartment A = 1  parameter p = 1 prior {prior} [1/day] "
-            "flow A -> : p * A }"
+            f"model M {{ compartment A = 1, B = 0  parameter p = 1 prior {prior} [1/day] "
+            "flow A -> B : p * A }"
         )
         assert check(m) == []
 

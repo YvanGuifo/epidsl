@@ -82,6 +82,35 @@ def test_composition_error_is_reported(tmp_path: Path, capsys: pytest.CaptureFix
     assert f"{src}:2:25: composition error: unknown model 'B'" in capsys.readouterr().err
 
 
+def test_run_c10_undeclared_semantics(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    src = tmp_path / "ode_only.epidsl"
+    src.write_text(
+        "model M {\n"
+        "  semantics: [ODE]\n"
+        "  compartment S = 990, I = 10, R = 0\n"
+        "  rate beta = 0.3 [1/day]  rate gamma = 0.1 [1/day]\n"
+        "  flow S -> I : beta * S * I / N  flow I -> R : gamma * I\n"
+        "}\n"
+    )
+    assert main(["run", str(src), "--t-end", "10", "--method", "gillespie"]) == 1
+    err = capsys.readouterr().err
+    assert "C10" in err
+    assert "Gillespie" in err
+
+
+def test_run_declared_semantics_succeeds(tmp_path: Path) -> None:
+    src = tmp_path / "full.epidsl"
+    src.write_text(
+        "model M {\n"
+        "  semantics: [ODE, Gillespie, TauLeap]\n"
+        "  compartment S = 990, I = 10, R = 0\n"
+        "  rate beta = 0.3 [1/day]  rate gamma = 0.1 [1/day]\n"
+        "  flow S -> I : beta * S * I / N  flow I -> R : gamma * I\n"
+        "}\n"
+    )
+    assert main(["run", str(src), "--t-end", "1", "--points", "2", "--method", "gillespie", "--seed", "1"]) == 0
+
+
 @pytest.mark.parametrize("example", sorted(EXAMPLES.glob("*.epidsl")), ids=lambda p: p.name)
 def test_every_example_is_clean(example: Path) -> None:
     assert main(["check", "--strict", str(example)]) == 0

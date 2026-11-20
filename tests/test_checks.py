@@ -39,7 +39,7 @@ def test_c4_degenerate_flow() -> None:
 
 
 def test_c5_missing_unit_is_a_warning() -> None:
-    found = diagnostics("compartment S  rate g = 1  flow S -> : g * S")
+    found = diagnostics("compartment S = 9, I = 1  rate g = 1  flow S -> I : g * S")
     assert [(d.code, d.severity) for d in found] == [("C5", Severity.WARNING)]
 
 
@@ -49,7 +49,7 @@ def test_c6_negative_initial_value() -> None:
 
 def test_c7_unused_declarations_are_warnings() -> None:
     found = diagnostics(
-        "compartment S, Z  rate g = 1 [1/day]  rate h = 2 [1/day]  flow S -> : g * S"
+        "compartment S = 9, I = 1, Z  rate g = 1 [1/day]  rate h = 2 [1/day]  flow S -> I : g * S"
     )
     assert [(d.code, d.severity) for d in found] == [
         ("C7", Severity.WARNING),
