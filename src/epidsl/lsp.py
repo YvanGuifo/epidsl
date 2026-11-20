@@ -30,7 +30,16 @@ _KEYWORDS = [
     "ode",
     "gillespie",
     "tau-leap",
+    # Network (D38–D41)
+    "network",
+    "attribute",
+    "interact",
+    "categorical",
 ]
+
+_NETWORK_FUNCTIONS = ["contacts", "attr", "neighbor_attr"]
+
+_NETWORK_GENERATORS = ["erdos_renyi", "watts_strogatz", "barabasi_albert", "complete"]
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +101,7 @@ def _get_completions(text: str, line: int, char: int) -> list[types.CompletionIt
         for model in models:
             names.update(c.name for c in model.compartments)
             names.update(k.name for k in model.constants)
+            names.update(a.name for a in model.attributes)
     except EpiError:
         pass
 
@@ -100,6 +110,10 @@ def _get_completions(text: str, line: int, char: int) -> list[types.CompletionIt
         items.append(types.CompletionItem(label=kw, kind=types.CompletionItemKind.Keyword))
     for func in FUNCTIONS:
         items.append(types.CompletionItem(label=func, kind=types.CompletionItemKind.Function))
+    for func in _NETWORK_FUNCTIONS:
+        items.append(types.CompletionItem(label=func, kind=types.CompletionItemKind.Function))
+    for gen in _NETWORK_GENERATORS:
+        items.append(types.CompletionItem(label=gen, kind=types.CompletionItemKind.Function))
     for sym in BUILTIN_SYMBOLS:
         items.append(types.CompletionItem(label=sym, kind=types.CompletionItemKind.Variable))
     for name in sorted(names):
@@ -107,9 +121,7 @@ def _get_completions(text: str, line: int, char: int) -> list[types.CompletionIt
     return items
 
 
-def _get_definition(
-    text: str, line: int, char: int, uri: str
-) -> types.Location | None:
+def _get_definition(text: str, line: int, char: int, uri: str) -> types.Location | None:
     """Return the declaration location of the symbol under the cursor, or None."""
     source_lines = text.splitlines()
     if line >= len(source_lines):
@@ -141,6 +153,9 @@ def _get_definition(
         for obs in model.observables:
             if obs.name == word:
                 return _make_location(uri, obs.line, obs.column)
+        for attr in model.attributes:
+            if attr.name == word:
+                return _make_location(uri, attr.line, attr.column)
     return None
 
 
@@ -180,9 +195,7 @@ def _did_change(ls: LanguageServer, params: types.DidChangeTextDocumentParams) -
     types.TEXT_DOCUMENT_COMPLETION,
     types.CompletionOptions(trigger_characters=[":", " ", "."]),
 )
-def _completion(
-    ls: LanguageServer, params: types.CompletionParams
-) -> types.CompletionList:
+def _completion(ls: LanguageServer, params: types.CompletionParams) -> types.CompletionList:
     pos = params.position
     uri = params.text_document.uri
     text = ls.workspace.get_text_document(uri).source
@@ -191,9 +204,7 @@ def _completion(
 
 
 @_server.feature(types.TEXT_DOCUMENT_DEFINITION)
-def _definition(
-    ls: LanguageServer, params: types.DefinitionParams
-) -> types.Location | None:
+def _definition(ls: LanguageServer, params: types.DefinitionParams) -> types.Location | None:
     pos = params.position
     uri = params.text_document.uri
     text = ls.workspace.get_text_document(uri).source

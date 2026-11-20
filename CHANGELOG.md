@@ -6,6 +6,16 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Support LSP de la syntaxe réseau (D43).** Le serveur de langage expose
+  désormais les mots-clés `network`, `attribute`, `interact`, `categorical`,
+  les fonctions réseau `contacts`, `attr`, `neighbor_attr` et les générateurs
+  `erdos_renyi`, `watts_strogatz`, `barabasi_albert`, `complete` dans la
+  complétion.  Les noms d'attributs déclarés apparaissent comme symboles
+  complétables.  La commande go-to-definition résout les attributs vers leur
+  déclaration `attribute`.
+
 ### Performance
 
 - **Vectorisation complète du Gillespie réseau via scipy.sparse (D42).**

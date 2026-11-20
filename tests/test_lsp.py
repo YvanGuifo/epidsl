@@ -165,3 +165,97 @@ def test_definition_location_has_correct_uri() -> None:
     loc = _get_definition(_SIMPLE, 2, s_char, _URI)
     assert loc is not None
     assert loc.uri == _URI
+
+
+# ---------------------------------------------------------------------------
+# D43 — réseau : mots-clés, fonctions, générateurs, attributs
+# ---------------------------------------------------------------------------
+
+_SIR_NETWORK = """\
+model SIR {
+    semantics: [Network]
+    compartment S = 90, I = 10, R = 0
+    attribute risk ~ categorical(Low=0.7, High=0.3)
+    rate beta_low  = 0.1 [1/contact/day]
+    rate beta_high = 0.5 [1/contact/day]
+    rate gamma = 0.1 [1/day]
+    network watts_strogatz(k=6, rewire=0.1)
+    flow S -> I : beta_low * neighbor_attr(I, risk, Low)
+               + beta_high * neighbor_attr(I, risk, High)
+    flow I -> R : gamma
+}
+"""
+
+
+def test_completions_include_network_keywords() -> None:
+    items = _get_completions(_SIR_NETWORK, 0, 0)
+    labels = {i.label for i in items}
+    assert {"network", "attribute", "interact", "categorical"} <= labels
+
+
+def test_completions_include_network_functions() -> None:
+    items = _get_completions(_SIR_NETWORK, 0, 0)
+    labels = {i.label for i in items}
+    assert {"contacts", "attr", "neighbor_attr"} <= labels
+
+
+def test_completions_network_functions_have_function_kind() -> None:
+    items = _get_completions(_SIR_NETWORK, 0, 0)
+    net_funcs = {i.label: i for i in items if i.label in {"contacts", "attr", "neighbor_attr"}}
+    assert all(f.kind is lsp.CompletionItemKind.Function for f in net_funcs.values())
+
+
+def test_completions_include_network_generators() -> None:
+    items = _get_completions(_SIR_NETWORK, 0, 0)
+    labels = {i.label for i in items}
+    assert {"erdos_renyi", "watts_strogatz", "barabasi_albert", "complete"} <= labels
+
+
+def test_completions_include_attribute_names() -> None:
+    items = _get_completions(_SIR_NETWORK, 0, 0)
+    labels = {i.label for i in items}
+    assert "risk" in labels
+
+
+def test_definition_finds_attribute() -> None:
+    # Line 8 (0-based): "    flow S -> I : beta_low * neighbor_attr(I, risk, Low)"
+    # 'risk' appears at char 46 in that line
+    flow_line = "    flow S -> I : beta_low * neighbor_attr(I, risk, Low)"
+    risk_char = flow_line.index("risk")
+    loc = _get_definition(_SIR_NETWORK, 8, risk_char, _URI)
+    assert loc is not None
+    # 'attribute risk' is on line 3 (0-based)
+    assert loc.range.start.line == 3
+
+
+def test_network_diagnostic_no_network_clause() -> None:
+    # semantics: [Network] sans clause 'network' → C-N1
+    src = """\
+model M {
+    semantics: [Network]
+    compartment S = 90, I = 10, R = 0
+    rate beta = 0.3 [1/day]
+    flow S -> I : beta * contacts(I)
+    flow I -> R : 0.1
+}
+"""
+    diags = _check_document(src)
+    codes = {d.code for d in diags}
+    assert "C-N1" in codes
+
+
+def test_contacts_wrong_arity_emits_diagnostic() -> None:
+    # contacts() sans argument → C-N2
+    src = """\
+model M {
+    semantics: [Network]
+    compartment S = 90, I = 10, R = 0
+    rate beta = 0.3 [1/day]
+    network watts_strogatz(k=6, rewire=0.1)
+    flow S -> I : beta * contacts()
+    flow I -> R : 0.1
+}
+"""
+    diags = _check_document(src)
+    codes = {d.code for d in diags}
+    assert "C-N2" in codes
