@@ -206,6 +206,13 @@ def _run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _server(args: argparse.Namespace) -> int:  # noqa: ARG001
+    from epidsl.lsp import make_server as _make_lsp
+
+    _make_lsp().start_io()
+    return 0
+
+
 def _studio(args: argparse.Namespace) -> int:
     if args.file is not None and not args.file.is_file():
         print(f"{args.file}: no such file", file=sys.stderr)
@@ -345,6 +352,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--no-browser", action="store_true", help="do not open the browser automatically"
     )
     studio_cmd.set_defaults(handler=_studio)
+
+    server_cmd = commands.add_parser(
+        "server", help="start the LSP language server (stdio transport)"
+    )
+    server_cmd.set_defaults(handler=_server)
 
     args = parser.parse_args(argv)
     handler = args.handler

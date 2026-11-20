@@ -818,5 +818,59 @@ and forces the author to infer the cause from a Python traceback.
 
 ---
 
+## D26 — Language Server Protocol server (2026-11-20)
+
+### Context
+
+Authoring EpiDSL models in a text editor without language support means:
+- syntax errors are only discovered at the CLI, after a save-and-run loop;
+- there is no completion for keywords, compartment names, or rate names;
+- finding where a compartment or parameter is declared requires a manual search.
+
+### Decision: `pygls` server with three capabilities
+
+A new `src/epidsl/lsp.py` module implements a Language Server Protocol server
+using `pygls` ≥ 2.1.1 and `lsprotocol`.
+
+Three capabilities are exposed:
+
+1. **Diagnostics** (`textDocument/publishDiagnostics`).  On `didOpen` and
+   `didChange`, the server calls `parse()` + `check()` and converts each
+   `Diagnostic` to its LSP counterpart.  Parse errors (syntax errors from Lark)
+   are returned as a single error with `code: "parse"`.  Positions are translated
+   from EpiDSL's 1-based (line, column) to LSP's 0-based.
+
+2. **Completion** (`textDocument/completion`).  Returns all DSL keywords, built-in
+   symbols (`N`, `t`), math functions, and every compartment and constant declared
+   in the file.  Completions are global-scope only (no context-sensitive filtering).
+   The file is re-parsed on every completion request; on parse errors, only keywords
+   and built-ins are returned.
+
+3. **Goto definition** (`textDocument/definition`).  Extracts the identifier under
+   the cursor by walking left and right until a non-word character is found, then
+   searches compartments, constants, and observables for a matching declaration.
+   Returns the declaration's LSP `Location`, or `null` when nothing matches.
+
+### Design: pure functions + server wiring
+
+The core logic lives in three pure functions — `_check_document`, `_get_completions`,
+`_get_definition` — that take plain strings and return `lsprotocol` values.  The
+`pygls` handlers are thin wrappers that extract the document text from the workspace
+and call these functions.  This separation makes the functions testable without a
+running LSP server or JSON-RPC transport.
+
+### Transport
+
+The server runs over stdio (`epidsl server`) so any editor that supports the LSP
+protocol can use it without a TCP port or external process manager.
+
+### Limitations
+
+- Completion is not context-sensitive (all items are always returned).
+- Definition does not follow composed models (no cross-model lookup).
+- Rename and hover are not implemented.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

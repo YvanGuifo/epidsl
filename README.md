@@ -81,6 +81,46 @@ The studio listens on this computer only, loads nothing from the internet, and
 answers only its own page. It uses port 8642, or a free one if that is taken;
 `--port` chooses one and `--no-browser` does not open the browser.
 
+## Use your editor with the language server
+
+`epidsl server` starts a Language Server Protocol server over stdio.  Any
+editor with LSP support (VS Code, Neovim, Emacs, Helix, …) can use it to get:
+
+- **Diagnostics in real time** — all static checks (C1–C13) run on every save and
+  the results appear as squiggles or a problem list.
+- **Completion** — keywords, math functions, and every compartment and constant
+  declared in the file.
+- **Goto definition** — jump to where a compartment, rate, parameter or observable
+  is declared.
+
+Configure your editor to run `epidsl server` as a language server for files
+with extension `.epidsl`.  For VS Code, add a launch entry like this in
+`.vscode/settings.json`:
+
+```json
+{
+  "languageServerExample.trace.server": "verbose",
+  "[epidsl]": {
+    "editor.defaultFormatter": null
+  }
+}
+```
+
+For Neovim with `nvim-lspconfig`, register it as a custom server:
+
+```lua
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "epidsl",
+  callback = function()
+    vim.lsp.start({
+      name = "epidsl",
+      cmd = { "epidsl", "server" },
+      root_dir = vim.fn.getcwd(),
+    })
+  end,
+})
+```
+
 ## Run a stochastic simulation
 
 Two methods simulate one random trajectory of whole individuals. The model must
@@ -540,6 +580,7 @@ trailing `;` after a statement is optional. The keywords (`model`, `compose`,
 | `epidsl check FILE` | `--strict` |
 | `epidsl studio [FILE]` | `--port N` (default 8642, or a free port), `--no-browser` |
 | `epidsl calibrate FILE` | `--data CSV` (required), `--method ode\|gillespie\|tau-leap` (default `ode`), `--particles N` (default 200), `--populations N` (default 5), `--seed N`, `--workers N`, `--model NAME`, `--out PATH`, `--strict` |
+| `epidsl server` | (none) — start the LSP language server over stdio |
 | `epidsl run FILE` | `--t-end T` (required), `--points N` (default 201), `--method ode\|gillespie\|tau-leap` (default `ode`), `--seed N`, `--runs K`, `--workers N`, `--quantiles Q1,Q2,...` (default `0.025,0.975`), `--epsilon E` (tau-leap only, default 0.03), `--model NAME`, `--out PATH`, `--strict` |
 
 All commands exit with status 0 on success and 1 on any error.

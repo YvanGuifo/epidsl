@@ -15,6 +15,10 @@ First version, not yet published.
   and block comments.
 - **Static checks** C1–C8, C11 and C12, with source positions; `--strict` turns
   warnings into errors.
+- **Language server.** `epidsl server` starts an LSP server over stdio.  Provides
+  diagnostics in real time (all static checks on every save), completion for keywords,
+  math functions, and declared symbols, and goto-definition for compartments,
+  constants and observables.  Any editor with LSP support can use it.
 - **C9 — open flows without a counterpart.** Warning when a model has inflows but no
   outflows, or outflows but no inflows (unbounded growth or decay).  Demographic models
   with both are not warned.
