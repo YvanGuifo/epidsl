@@ -24,7 +24,6 @@ from epidsl.backends.gillespie import GillespieBackend
 from epidsl.ir import EpiModel, Semantics, SimulationConfig
 from epidsl.parser import parse
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

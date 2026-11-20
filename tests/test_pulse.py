@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from epidsl.backends.gillespie import GillespieBackend
 from epidsl.backends.ode import ODEBackend

@@ -52,6 +52,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: performance benchmarks (run with -m slow)"]
 
 [tool.ruff]
 line-length = 100
@@ -65,4 +66,8 @@ files = ["src"]
 
 [[tool.mypy.overrides]]
 module = "lark.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "networkx.*"
 ignore_missing_imports = true

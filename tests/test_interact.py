@@ -8,12 +8,11 @@ Le taux total pour un agent focal u en état A = rate_expr × count(B-voisins de
 """
 
 import numpy as np
-import pytest
 
-from epidsl.ir import EpiModel, InteractFlow, SimulationConfig
-from epidsl.parser import parse
-from epidsl.checks import errors
 from epidsl.backends.network import NetworkBackend
+from epidsl.checks import errors
+from epidsl.ir import InteractFlow, SimulationConfig
+from epidsl.parser import parse
 
 # ---------------------------------------------------------------------------
 # Modèles de référence

@@ -13,12 +13,10 @@ Nouveaux contrôles statiques :
 
 from __future__ import annotations
 
-import pytest
-
-from epidsl.checks import check, errors
-from epidsl.parser import parse
 from epidsl.backends.network import NetworkBackend
+from epidsl.checks import errors
 from epidsl.ir import SimulationConfig
+from epidsl.parser import parse
 
 
 def parse_model(src: str):
@@ -237,7 +235,6 @@ def test_neighbor_attr_high_risk_accelerates():
     On compare : modèle standard (beta_high=0.5) vs beta_high=0 (aucune infection
     possible puisque la seule source d'infection est neighbor_attr(I, risk, High)).
     """
-    import numpy as np
 
     model_active = parse_model(_SIR_NEIGHBOR_ATTR)
     model_zero = parse_model("""

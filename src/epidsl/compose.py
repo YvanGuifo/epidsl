@@ -51,7 +51,6 @@ from epidsl.ir import (
     Expr,
     Flow,
     Incidence,
-    Migrate,
     Neg,
     Num,
     Observable,

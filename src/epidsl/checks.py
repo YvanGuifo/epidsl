@@ -34,7 +34,17 @@ from dataclasses import dataclass
 from enum import Enum
 
 from epidsl.expr import BUILTIN_SYMBOLS, FUNCTIONS, RESERVED, walk
-from epidsl.ir import Call, Compartment, Constant, EpiModel, Expr, Incidence, InteractFlow, Observable, Semantics, Sym, AttributeDecl
+from epidsl.ir import (
+    Call,
+    Compartment,
+    Constant,
+    EpiModel,
+    Expr,
+    Incidence,
+    Observable,
+    Semantics,
+    Sym,
+)
 
 
 class Severity(Enum):

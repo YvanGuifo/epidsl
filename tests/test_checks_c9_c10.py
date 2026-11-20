@@ -1,6 +1,5 @@
 """C9 (mass conservation) and C10 (undeclared semantics) static checks."""
 
-import pytest
 
 from epidsl.checks import Diagnostic, Severity, check, check_semantics
 from epidsl.ir import EpiModel, Semantics

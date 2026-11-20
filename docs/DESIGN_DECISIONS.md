@@ -1600,5 +1600,54 @@ comme les flux conventionnels avec `contacts()`.
 
 ---
 
+## D42 — Vectorisation complète du Gillespie réseau (scipy.sparse) (2026-11-20)
+
+**Problème.** Le `NetworkBackend` (D38–D41) calcule les taux via une boucle Python
+`for u in eligible:` qui appelle `_agent_rate()` → `_eval_expr()` pour chaque agent
+éligible à chaque pas.  Pour N=1000, Watts-Strogatz k=6, t_end=50, cela prend ~14 s
+(pur Python), ce qui rend les simulations de population réaliste prohibitivement lentes.
+
+**Décision.** Remplacer la boucle par un évaluateur vectorisé `_eval_expr_vec()` qui
+traite les N agents simultanément grâce à des opérations NumPy et scipy.sparse :
+
+| Primitive           | Implémentation vectorisée |
+|---------------------|--------------------------|
+| `contacts(X)`       | `adj @ (agent_states == idx_X).astype(float)` |
+| `attr(name, val)`   | `(attr_arrays[name] == idx_val).astype(float)` |
+| `neighbor_attr(X, name, val)` | `adj @ ((agent_states == idx_X) & (attr_arrays[name] == idx_val)).astype(float)` |
+
+La matrice d'adjacence CSR est construite une fois à l'initialisation via
+`nx.to_scipy_sparse_array(G, format='csr', dtype=float64)`.
+
+L'évaluateur scalaire `_eval_expr` est conservé pour les flux `interact` (qui
+nécessitent une liste de voisins-B nommée au moment de l'événement) ; leur boucle
+interne est réduite aux agents ayant effectivement des voisins en état ns.
+
+**Alternatives écartées.**
+
+1. *Mise à jour incrémentale* (recalcul uniquement pour l'agent ayant transité et
+   ses voisins) — 5-10× plus complexe ; utile pour les très petits degrés moyens
+   mais n'apporte pas de gain supplémentaire avec scipy.sparse.
+2. *Numba / Cython* — portabilité plus difficile ; scipy est déjà une dépendance.
+3. *GraphBLAS / cuGraph* — pertinent pour N > 100 000 ; hors de portée de la
+   cible actuelle.
+
+**Performances mesurées** (MacBook, Python 3.11, seed=42, Watts-Strogatz k=6) :
+
+| N     | t_end | Avant D42 | Après D42 | Accélération |
+|-------|-------|-----------|-----------|-------------|
+| 100   | 20    | 0,17 s    | 0,006 s   | ×28         |
+| 200   | 20    | 0,51 s    | 0,010 s   | ×51         |
+| 500   | 20    | 3,33 s    | 0,029 s   | ×115        |
+| 1000  | 50    | ~14 s     | 0,080 s   | ×175        |
+
+**Impact sur la correction.** La trajectoire produite par la boucle scalaire et
+par l'évaluateur vectorisé est bit-identique pour le même seed, garantissant la
+reproductibilité. La bibliothèque de tests couvre : déterminisme, conservation
+de la population, perf N=200/500, et filtre `neighbor_attr` sensible au bug
+d'attribut ignoré (sabotage détecté dans `tests/test_network_perf.py`).
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

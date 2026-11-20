@@ -6,6 +6,18 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ## [Unreleased]
 
+### Performance
+
+- **Vectorisation complète du Gillespie réseau via scipy.sparse (D42).**
+  `contacts(X)`, `attr()` et `neighbor_attr()` sont désormais évalués pour les N
+  agents simultanément par multiplication matrice-vecteur creuse (`adj @ mask`),
+  éliminant la boucle Python per-agent.  La matrice CSR est construite une fois à
+  l'initialisation.  Accélérations mesurées (Watts-Strogatz k=6) :
+  N=200 : 0,51 s → 0,010 s (×51) ; N=500 : 3,33 s → 0,029 s (×115) ;
+  N=1000, t_end=50 : ~14 s → 0,080 s (×175).  La trajectoire reste bit-identique
+  au même seed.  Les flux `interact` conservent une boucle interne réduite aux
+  agents ayant effectivement des voisins en état cible.
+
 ## [0.2.0] - 2026-11-20
 
 ### Added
