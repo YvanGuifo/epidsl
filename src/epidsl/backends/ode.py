@@ -38,7 +38,7 @@ def _discontinuity_breakpoints(model: EpiModel, constants: dict[str, float]) -> 
                 val = _resolve_num(node.args[1], constants)
                 if val is not None:
                     breakpoints.append(val)
-            elif node.func == "ramp" and len(node.args) == 3:
+            elif node.func in ("ramp", "pulse") and len(node.args) == 3:
                 for arg in node.args[1:]:
                     val = _resolve_num(arg, constants)
                     if val is not None:

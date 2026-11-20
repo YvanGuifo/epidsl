@@ -1062,6 +1062,51 @@ self-migration).  The `_stratify()` function gates the diagonal-skip on
 
 ---
 
+## D33 — Rectangular pulse function `pulse(t, t0, t1)`
+
+**Context.** Some interventions have a clear start and end: a school closure, a
+short vaccination campaign, a temporary price shock. `step()` (D31) can model the
+start but not the end; composing two steps (`step(t,t0) - step(t,t1)`) is
+error-prone and relies on user knowledge of the algebra. A dedicated built-in
+reduces cognitive load and matches the vocabulary of epidemiological scenario
+planning.
+
+**Decision.** Add `pulse(t, t0, t1)` as a built-in function:
+- `t < t0` → 0
+- `t0 <= t < t1` → 1  (closed on the left, open on the right)
+- `t >= t1` → 0
+
+Registered in `FUNCTIONS` with arity 3. The boundary convention — closed left,
+open right — is the standard half-open interval `[t0, t1)` used in mathematics.
+It makes consecutive pulses `pulse(t, 0, 10) + pulse(t, 10, 20)` cover `[0, 20)`
+without overlap or gap at t=10.
+
+**ODE breakpoint injection.** A pulse has two jump discontinuities, at `t0` and
+`t1`. `_discontinuity_breakpoints()` treats `pulse` identically to `ramp`:
+`node.func in ("ramp", "pulse")` with `args[1:]` to inject both. The trimming
+step keeps the output at exactly `n_points`. This shared branch avoids any change
+to the trimming logic.
+
+**Stochastic backends.** As with `step()` and `ramp()`, Gillespie and tau-leap
+evaluate the rate at each event time, crossing both boundaries naturally. No extra
+logic needed.
+
+**Measured output.** On the reference model (N=1 000, `pulse(t, 20, 50)`, phi=0.9,
+t_end=60, n_points=61): R0_before=3.0, R0_during=0.3. With an off-grid pulse
+(t0=20.5, t1=49.5, coarse grid n_points=7) the output has exactly 7 points after
+trimming, confirmed by `test_pulse_ode_breakpoints_injected`.
+
+**Alternatives considered.**
+- *User composing `step(t,t0) - step(t,t1)`*: algebraically correct but
+  requires the user to understand the convention and is error-prone for
+  `1 - phi * (step(t,t0) - step(t,t1))` where sign errors occur.
+- *A family of pulse shapes (trapezoidal, Gaussian)*: out of scope for the
+  base language; `ramp()` already handles the trapezoidal entry and exit.
+- *`pulse(t, t0, duration)` with duration instead of t1*: less natural for
+  calendar-based scenarios where start and end dates are primary.
+
+---
+
 ## D32 — Linear ramp function `ramp(t, t0, t1)`
 
 **Context.** Some interventions are not instantaneous. Lockdown stringency may

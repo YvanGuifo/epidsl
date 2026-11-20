@@ -8,6 +8,14 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Rectangular pulse function for temporary interventions (D33).** `pulse(t, t0, t1)`
+  returns 1 for `t0 <= t < t1` (closed left, open right) and 0 otherwise, enabling
+  finite-duration interventions such as temporary lockdowns, school closures, or
+  short vaccination campaigns in rate expressions.  The ODE backend injects both
+  `t0` and `t1` as breakpoints in `t_eval` so LSODA crosses both discontinuities
+  cleanly, then trims the output back to the requested grid.  Example:
+  `examples/sir_pulse.epidsl`.
+
 - **Linear ramp function for progressive interventions (D32).** `ramp(t, t0, t1)`
   returns 0 for `t <= t0`, 1 for `t >= t1`, and `(t - t0) / (t1 - t0)` in
   between, enabling gradual interventions (progressive lockdowns, staged

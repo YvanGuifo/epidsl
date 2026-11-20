@@ -28,6 +28,11 @@ def _ramp(t: float, t0: float, t1: float) -> float:
     return (t - t0) / (t1 - t0)
 
 
+def _pulse(t: float, t0: float, t1: float) -> float:
+    """Rectangular pulse: 1 for t0 <= t < t1, 0 otherwise."""
+    return 1.0 if t0 <= t < t1 else 0.0
+
+
 FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "exp": (1, math.exp),
     "log": (1, math.log),
@@ -39,6 +44,7 @@ FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "max": (2, max),
     "step": (2, _step),
     "ramp": (3, _ramp),
+    "pulse": (3, _pulse),
 }
 
 #: Built-in symbols: total population and current time.
