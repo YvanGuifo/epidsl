@@ -62,9 +62,9 @@ class GillespieBackend:
                 moved_output[recorded] = moved
                 recorded += 1
                 continue
-            mass = jumps.mass(state, t, ahead)
-            if mass < owed:
-                owed -= mass  # no jump before the next output time
+            t_jump, owed = jumps.advance(state, t, ahead, owed)
+            if t_jump is None:
+                # No jump before the next output time; residual already in `owed`.
                 t = ahead
                 continue
             if events == self.max_events:
@@ -72,7 +72,7 @@ class GillespieBackend:
                     f"Gillespie simulation of model {model.name} needs more than "
                     f"{self.max_events} events (reached t = {t:g})"
                 )
-            t = jumps.reach(state, t, ahead, owed)
+            t = t_jump
             owed = rng.exponential(1.0)
             evaluate_propensities(compiled, state, t, propensities, model.name, "Gillespie")
             total = float(propensities.sum())

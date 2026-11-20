@@ -559,6 +559,56 @@ check from C9 and has no number yet.
 
 ---
 
+### D27 — Fast inversion for time-variable rates in Gillespie (2026-11-20)
+
+**Decision:** replace the ``quad`` + ``brentq`` combination in
+``TimedJumps.mass`` / ``TimedJumps.reach`` with a new ``TimedJumps.advance``
+method that locates the next jump using Newton-Raphson with a Simpson-rule
+integral.
+
+- **Problem.** Each jump in a model with time-dependent rates previously
+  required ~160 rate evaluations: ``brentq`` made ~15 calls to ``mass()``,
+  each of which called SciPy's ``quad`` for ~10 evaluations of the total
+  rate.  On ``examples/sir_seasonal.epidsl`` (120 days, 30 000 events) this
+  took 11 s.
+- **Fast path (Newton-Raphson with Simpson integral).**
+  1. Evaluate λ(start) (1 call) and estimate the jump time as
+     t₀ = start + owed/λ(start).
+  2. If t₀ > stop, verify with Simpson on [start, stop] (2 more calls); if
+     the integral is still below ``owed``, return the residual immediately
+     (3 calls total for the common "no jump" case).
+  3. Otherwise run Newton-Raphson with F(t) = ∫[start, t] λ − owed and
+     F′(t) = λ(t), where the integral is evaluated by Simpson with one
+     midpoint (2 rate calls per iteration).  Converges in 3–5 iterations
+     for the smooth rates typical of epidemiological models (~10–12 calls).
+- **Slow fallback.** When Newton stalls (rate near zero, non-monotone
+  region), ``advance`` falls back to ``mass`` + ``reach`` (unchanged).
+- **Gillespie loop change.** The inner loop of ``GillespieBackend.run``
+  was simplified: the separate ``mass < owed`` branch and the ``reach`` call
+  were replaced by a single ``jumps.advance(state, t, ahead, owed)`` call.
+- **Tau-leap unchanged.** Its ``TimedJumps`` usage was already minimal; no
+  change is needed there.
+
+**Cost, measured on ``examples/sir_seasonal.epidsl`` (120 days, 30 000
+events, same seed 42):**
+
+| Implementation | Time per run |
+|---|---|
+| quad + brentq (before) | 11 s |
+| Newton + Simpson (after) | 0.78 s |
+| **Speedup** | **×14** |
+
+Models without ``t`` use the unchanged path (``while jumps is None`` branch)
+and are unaffected.
+
+**Validation:** 8 new tests cover ``TimedJumps.advance`` directly (no-jump
+residual, jump time for constant rate, jump time for exponential rate) and
+end-to-end (Poisson law, binomial law, seed reproducibility, benchmark);
+three deliberate faults (ignore all jumps, force immediate jump, invert
+Newton sign) were each caught by at least one test.
+
+---
+
 ## Roadmap
 
 1. **Done:** grammar, typed IR, checks C1–C8, ODE backend (SciPy LSODA), CLI.

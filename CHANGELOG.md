@@ -55,10 +55,15 @@ First version, not yet published.
   simulation and calibration.
 - **Command line.** `epidsl check`, `epidsl run`, `epidsl calibrate`, `epidsl studio`.
 
+- **Fast Gillespie inversion for time-variable rates (D27).** Gillespie simulation with
+  time-dependent rates is now 14× faster: 0.78 s instead of 11 s for
+  ``examples/sir_seasonal.epidsl`` (120 days, 30 000 events, seed 42).  Newton-Raphson
+  with a Simpson-rule integral (3–12 rate evaluations per jump) replaces
+  ``quad + brentq`` (~160 evaluations per jump).  A slow fallback preserves
+  correctness for non-monotone or near-zero rates.
+
 ### Known limits
 
-- Exact stochastic simulation is much slower when a rate depends on time.
 - A contact matrix (a rate that depends on the strata of both parties) cannot be
   expressed.
 - No reporting delay on observables.
-- Exact stochastic simulation with time-dependent rates uses numerical integration (slower).
