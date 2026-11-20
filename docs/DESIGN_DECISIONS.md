@@ -1441,6 +1441,61 @@ compiled backend, which is left for a future tranche.
 construction and the agent-state shuffling, so simulations are fully reproducible.
 The first integer drawn from the RNG is used as the graph seed.
 
+## D39 — Agents hétérogènes via attributs discrets (`attribute … ~ categorical`)
+
+**Status:** Implemented (`src/epidsl/backends/network.py`, `src/epidsl/ir.py`,
+`src/epidsl/grammar.lark`, `src/epidsl/parser.py`, `src/epidsl/checks.py`).
+
+### Motivation
+
+Les modèles SIR homogènes ne permettent pas de distinguer les agents selon leurs
+caractéristiques individuelles (âge, statut vaccinal, comportement).  Permettre
+des attributs discrets tirés d'une distribution catégorielle à l'initialisation
+autorise la modélisation de l'hétérogénéité de population sans multiplier les
+compartiments.
+
+### Syntaxe
+
+```
+attribute risk ~ categorical(Low=0.7, High=0.3)
+```
+
+Les proportions n'ont pas besoin d'être normalisées ; le moteur les normalise
+automatiquement.  Dans une expression de taux, `attr(name, label)` renvoie 1.0
+si l'agent focal porte ce label, 0.0 sinon.  Utilisée conjointement avec
+`contacts(X)`, elle permet :
+
+```
+flow S -> I : (beta_low * attr(risk, Low) + beta_high * attr(risk, High)) * contacts(I)
+```
+
+### Implémentation
+
+Chaque attribut est stocké comme un tableau `int32` de taille N (un indice de
+catégorie par agent) dans `_assign_attributes()`.  À l'évaluation d'un taux
+per-agent, `_eval_expr` reçoit un dict `{attr_name: label_string}` construit à
+la volée depuis les tableaux d'indices et les listes de labels.  Cela évite
+d'allouer des dictionnaires de grande taille.
+
+### Vérifications statiques
+
+| Code  | Déclencheur |
+|-------|-------------|
+| C-A1  | `attr()` dans un modèle sans sémantique Network |
+| C-A2  | `attr()` avec un nombre d'arguments ≠ 2 |
+| C-A3  | `attr()` dont le premier argument n'est pas un attribut déclaré |
+
+Les Sym nodes passés à `attr()` sont exemptés du contrôle C3 (symbole non
+défini) car ce sont des noms d'attributs/labels, pas des constantes ou
+compartiments.
+
+### Performance mesurée
+
+Même ordre de grandeur que D38 car les attributs n'ajoutent qu'un dict de
+correspondance par agent et par pas de temps, soit une allocation et une
+consultation O(nb_attributs) supplémentaires par événement.  Pour le modèle
+`sir_attributes.epidsl` (N=1000, watts_strogatz k=6, t_end=50) : ~15 s.
+
 ---
 
 *Maintained alongside the source. Update it when a decision is made or an open

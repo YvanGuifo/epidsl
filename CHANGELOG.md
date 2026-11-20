@@ -8,6 +8,16 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Agents hétérogènes via attributs discrets `attribute … ~ categorical(…)` (D39).**
+  Chaque agent reçoit un attribut tiré d'une distribution catégorielle à la
+  construction du modèle (ex. `attribute risk ~ categorical(Low=0.7, High=0.3)`).
+  La fonction `attr(name, value)` dans une expression de taux renvoie 1.0 si
+  l'agent focal possède la valeur indiquée, 0.0 sinon.  Combinée avec
+  `contacts(X)`, elle permet de modéliser des taux d'infection différenciés par
+  groupe de risque.  Nouveaux contrôles statiques : C-A1 (`attr()` hors sémantique
+  Network), C-A2 (`attr()` arité incorrecte), C-A3 (attribut non déclaré).
+  Exemple : `examples/sir_attributes.epidsl`.
+
 - **Contact network backend `NetworkBackend` (D38).** New `semantics: [Network]`
   with a `network <generator>(params)` clause runs a Gillespie-on-network
   simulation: each agent is a graph node; `contacts(X)` in a rate expression

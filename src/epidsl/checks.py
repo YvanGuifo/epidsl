@@ -16,6 +16,9 @@ C13  ill-defined noise distribution             error
 C14  negative reporting delay                   error
 C-N1 Network semantics without a network clause error
 C-N2 contacts() with wrong arity               error
+C-A1 attribute used without Network semantics   error
+C-A2 attr() with wrong arity                   error
+C-A3 attr() references undeclared attribute     error
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from epidsl.expr import BUILTIN_SYMBOLS, FUNCTIONS, RESERVED, walk
-from epidsl.ir import Call, Compartment, Constant, EpiModel, Expr, Incidence, Observable, Semantics, Sym
+from epidsl.ir import Call, Compartment, Constant, EpiModel, Expr, Incidence, Observable, Semantics, Sym, AttributeDecl
 
 
 class Severity(Enum):
@@ -105,14 +108,51 @@ def check(
     used: set[str] = set()
     endpoints = {(flow.source, flow.target) for flow in model.flows}
 
+    declared_attributes = {a.name for a in model.attributes}
+    # Names that may appear as Sym arguments to attr() — exempt from C3
+    attr_known: frozenset[str] = frozenset(
+        {decl.name for decl in model.attributes}
+        | {label for decl in model.attributes for label, _ in decl.categories}
+    )
+
+    def _attr_arg_syms(expr: Expr) -> frozenset[str]:
+        """Return names of Sym nodes that are direct arguments of attr() calls."""
+        names: set[str] = set()
+        for node in walk(expr):
+            if isinstance(node, Call) and node.func == "attr":
+                for arg in node.args:
+                    if isinstance(arg, Sym):
+                        names.add(arg.name)
+        return frozenset(names)
+
     def check_expr(expr: Expr, in_observable: bool) -> None:
+        attr_arg_names = _attr_arg_syms(expr)
         for node in walk(expr):
             if isinstance(node, Sym):
                 used.add(node.name)
+                if node.name in attr_arg_names:
+                    continue  # attr() argument — validated by C-A* checks
                 if node.name not in compartments | constants | BUILTIN_SYMBOLS | allowed_undefined:
                     error("C3", f"undefined symbol '{node.name}'", node)
             elif isinstance(node, Call):
-                if node.func == "contacts":
+                if node.func == "attr":
+                    if len(node.args) != 2:
+                        error(
+                            "C-A2",
+                            f"attr() takes exactly 2 arguments (attribute_name, value), got {len(node.args)}",
+                            node,
+                        )
+                    elif Semantics.NETWORK not in model.semantics:
+                        error("C-A1", "attr() can only be used in models with Network semantics", node)
+                    else:
+                        attr_name_arg = node.args[0]
+                        if isinstance(attr_name_arg, Sym) and attr_name_arg.name not in declared_attributes:
+                            error(
+                                "C-A3",
+                                f"attr() references undeclared attribute '{attr_name_arg.name}'",
+                                node,
+                            )
+                elif node.func == "contacts":
                     if len(node.args) != 1:
                         error(
                             "C-N2",

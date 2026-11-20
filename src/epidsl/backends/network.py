@@ -27,7 +27,7 @@ from numpy.typing import NDArray
 from epidsl.backends import BackendResult
 from epidsl.checks import errors
 from epidsl.expr import FUNCTIONS, walk
-from epidsl.ir import BinOp, Call, EpiModel, Expr, Neg, Num, Semantics, SimulationConfig, Sym
+from epidsl.ir import BinOp, Call, EpiModel, Expr, Neg, Num, Semantics, SimulationConfig, Sym, AttributeDecl
 
 _KNOWN_GENERATORS = frozenset({"erdos_renyi", "watts_strogatz", "barabasi_albert", "complete"})
 
@@ -64,6 +64,25 @@ def _build_graph(model: EpiModel, n: int, rng: np.random.Generator) -> nx.Graph:
 # ---------------------------------------------------------------------------
 
 
+def _assign_attributes(
+    attributes: tuple,
+    n: int,
+    rng: np.random.Generator,
+) -> dict[str, NDArray[np.int32]]:
+    """Draw categorical attribute values for N agents.
+
+    Returns a dict mapping attribute name → int array of category indices (one per agent).
+    """
+    result: dict[str, NDArray[np.int32]] = {}
+    for decl in attributes:
+        labels = [label for label, _ in decl.categories]
+        probs = np.array([p for _, p in decl.categories], dtype=np.float64)
+        probs /= probs.sum()  # normalise
+        indices = rng.choice(len(labels), size=n, p=probs).astype(np.int32)
+        result[decl.name] = indices
+    return result
+
+
 def _eval_expr(
     expr: Expr,
     constants: Mapping[str, float],
@@ -71,8 +90,15 @@ def _eval_expr(
     state_vec: NDArray[np.float64],
     t: float,
     contact_counts: Mapping[str, int],
+    agent_attr_values: Mapping[str, str] | None = None,
 ) -> float:
-    """Recursively evaluate expr; contact_counts maps compartment name → neighbour count."""
+    """Recursively evaluate expr; contact_counts maps compartment name → neighbour count.
+
+    agent_attr_values maps attribute name → current agent's label (e.g. {"risk": "High"}).
+    """
+    def _rec(e: Expr) -> float:
+        return _eval_expr(e, constants, compartment_index, state_vec, t, contact_counts, agent_attr_values)
+
     match expr:
         case Num(value):
             return value
@@ -85,41 +111,26 @@ def _eval_expr(
         case Sym(name):
             return constants[name]
         case Neg(operand):
-            return -_eval_expr(operand, constants, compartment_index, state_vec, t, contact_counts)
+            return -_rec(operand)
         case BinOp("+", left, right):
-            return (
-                _eval_expr(left, constants, compartment_index, state_vec, t, contact_counts)
-                + _eval_expr(right, constants, compartment_index, state_vec, t, contact_counts)
-            )
+            return _rec(left) + _rec(right)
         case BinOp("-", left, right):
-            return (
-                _eval_expr(left, constants, compartment_index, state_vec, t, contact_counts)
-                - _eval_expr(right, constants, compartment_index, state_vec, t, contact_counts)
-            )
+            return _rec(left) - _rec(right)
         case BinOp("*", left, right):
-            return (
-                _eval_expr(left, constants, compartment_index, state_vec, t, contact_counts)
-                * _eval_expr(right, constants, compartment_index, state_vec, t, contact_counts)
-            )
+            return _rec(left) * _rec(right)
         case BinOp("/", left, right):
-            return (
-                _eval_expr(left, constants, compartment_index, state_vec, t, contact_counts)
-                / _eval_expr(right, constants, compartment_index, state_vec, t, contact_counts)
-            )
+            return _rec(left) / _rec(right)
         case BinOp("^", left, right):
-            return (
-                _eval_expr(left, constants, compartment_index, state_vec, t, contact_counts)
-                ** _eval_expr(right, constants, compartment_index, state_vec, t, contact_counts)
-            )
+            return _rec(left) ** _rec(right)
         case Call("contacts", (Sym(comp_name),)):
             return float(contact_counts.get(comp_name, 0))
+        case Call("attr", (Sym(attr_name), Sym(value_name))):
+            if agent_attr_values is None:
+                return 0.0
+            return 1.0 if agent_attr_values.get(attr_name) == value_name else 0.0
         case Call(func, args):
             _, impl = FUNCTIONS[func]
-            evaluated = [
-                _eval_expr(a, constants, compartment_index, state_vec, t, contact_counts)
-                for a in args
-            ]
-            return float(impl(*evaluated))
+            return float(impl(*(_rec(a) for a in args)))
     raise TypeError(f"unsupported expression node: {expr!r}")
 
 
@@ -146,6 +157,7 @@ def _agent_rate(
     neighbours: list[list[int]],
     state_vec: NDArray[np.float64],
     t: float,
+    agent_attr_values: Mapping[str, str] | None = None,
 ) -> float:
     """Return the event rate for agent ``agent`` firing flow source→target.
 
@@ -159,7 +171,7 @@ def _agent_rate(
     }
     return max(
         0.0,
-        _eval_expr(flow_expr, constants, compartment_index, state_vec, t, contact_counts),
+        _eval_expr(flow_expr, constants, compartment_index, state_vec, t, contact_counts, agent_attr_values),
     )
 
 
@@ -203,6 +215,14 @@ class NetworkBackend:
             agent_states[assigned:assigned + count] = i
             assigned += count
         rng.shuffle(agent_states)
+
+        # Assign discrete attributes to agents
+        attr_index_arrays = _assign_attributes(model.attributes, N, rng)
+        # Build label lookup: attr_name → {index → label}
+        attr_label_maps: dict[str, list[str]] = {
+            decl.name: [label for label, _ in decl.categories]
+            for decl in model.attributes
+        }
 
         # Flow metadata
         flow_sources = [
@@ -256,6 +276,10 @@ class NetworkBackend:
                     eligible = np.arange(N)
 
                 for u in eligible:
+                    agent_attrs = {
+                        name: attr_label_maps[name][int(attr_index_arrays[name][u])]
+                        for name in attr_label_maps
+                    } if attr_label_maps else None
                     rate = _agent_rate(
                         u,
                         int(agent_states[u]),
@@ -269,6 +293,7 @@ class NetworkBackend:
                         neighbours,
                         sv,
                         t,
+                        agent_attrs,
                     )
                     if rate > 0.0:
                         agent_flow_rates.append((u, f_idx, rate))

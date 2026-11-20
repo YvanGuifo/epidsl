@@ -12,6 +12,7 @@ from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedTok
 from epidsl.compose import flatten
 from epidsl.errors import EpiSyntaxError
 from epidsl.ir import (
+    AttributeDecl,
     BinOp,
     Call,
     Compartment,
@@ -134,6 +135,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
         constants: list[Constant] = []
         flows: list[Flow] = []
         observables: list[Observable] = []
+        attributes: list[AttributeDecl] = []
         semantics: tuple[Semantics, ...] | None = None
         network: NetworkDecl | None = None
         for item in statements:
@@ -145,6 +147,8 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                 flows.append(item)
             elif isinstance(item, Observable):
                 observables.append(item)
+            elif isinstance(item, AttributeDecl):
+                attributes.append(item)
             elif isinstance(item, NetworkDecl):
                 if network is not None:
                     raise EpiSyntaxError(f"model {name} declares network twice", **_at(name))
@@ -160,6 +164,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             flows=tuple(flows),
             semantics=semantics or (Semantics.ODE,),
             observables=tuple(observables),
+            attributes=tuple(attributes),
             network=network,
             line=name.line or 0,
             column=name.column or 0,
@@ -223,6 +228,17 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                 raise EpiSyntaxError(f"noise distribution '{dist}' expects numbers, not '{arg}'", **_at(arg))
             params.append(arg)
         return NoiseDistribution(str(dist), tuple(params))
+
+    def attribute_decl(self, name: Token, *categories: tuple[str, float]) -> AttributeDecl:
+        return AttributeDecl(
+            str(name),
+            tuple(categories),
+            line=name.line or 0,
+            column=name.column or 0,
+        )
+
+    def attr_category(self, name: Token, value: float) -> tuple[str, float]:
+        return (str(name), value)
 
     def network_decl(self, generator: Token, *params: tuple[str, float] | None) -> NetworkDecl:
         return NetworkDecl(str(generator), tuple(p for p in params if p is not None), line=generator.line or 0, column=generator.column or 0)

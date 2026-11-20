@@ -78,6 +78,21 @@ class Semantics(Enum):
 
 
 @dataclass(frozen=True, slots=True)
+class AttributeDecl:
+    """Declaration of a discrete agent attribute drawn from a categorical distribution.
+
+    ``name`` is the attribute name (e.g. "risk"); ``categories`` lists (label, proportion)
+    pairs whose proportions must sum to 1.  The proportion of agents receiving each label
+    is determined at model initialisation.
+    """
+
+    name: str
+    categories: tuple[tuple[str, float], ...]  # (("Low", 0.7), ("High", 0.3))
+    line: int = field(default=0, compare=False)
+    column: int = field(default=0, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
 class NetworkDecl:
     """Declaration of the contact network topology for the Network backend."""
 
@@ -211,6 +226,7 @@ class EpiModel:
     #: For a composed model: each component's name and compartments, in order. Its
     #: compartments are then the product of these, in the same order.
     parts: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    attributes: tuple[AttributeDecl, ...] = ()
     network: NetworkDecl | None = None
     line: int = _pos()
     column: int = _pos()

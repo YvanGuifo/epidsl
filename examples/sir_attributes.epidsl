@@ -1,0 +1,25 @@
+-- SIR avec agents hétérogènes : risque d'infection différencié par attribut
+--
+-- Chaque agent reçoit un attribut discret « risk » (Low=70 %, High=30 %).
+-- Le taux d'infection effectif dépend de l'attribut de l'agent focal :
+--   - agent Low  : beta_low  * contacts(I)  = 0.1 * voisins infectés
+--   - agent High : beta_high * contacts(I)  = 0.4 * voisins infectés
+--
+-- Exécution : uv run epidsl run examples/sir_attributes.epidsl --t-end 50
+
+model SIR {
+    semantics: [Network]
+
+    compartment S = 980, I = 20, R = 0
+
+    attribute risk ~ categorical(Low=0.7, High=0.3)
+
+    rate beta_low  = 0.1   [1/contact/day]
+    rate beta_high = 0.4   [1/contact/day]
+    rate gamma     = 0.1   [1/day]
+
+    network watts_strogatz(k=6, rewire=0.1)
+
+    flow S -> I : (beta_low * attr(risk, Low) + beta_high * attr(risk, High)) * contacts(I)
+    flow I -> R : gamma
+}
