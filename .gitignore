@@ -9,3 +9,6 @@ dist/
 .DS_Store
 .env
 .env.*
+.clawness/
+graphify-out/
+plans/

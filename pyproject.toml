@@ -29,6 +29,11 @@ dependencies = [
     "scipy>=1.13",
 ]
 
+[project.urls]
+Homepage = "https://github.com/YvanGuifo/epidsl"
+Repository = "https://github.com/YvanGuifo/epidsl"
+Issues = "https://github.com/YvanGuifo/epidsl/issues"
+
 [project.scripts]
 epidsl = "epidsl.cli:main"
 
