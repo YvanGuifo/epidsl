@@ -33,17 +33,15 @@ model City {
 compose MetaSIR {
     models: [SIR, City]
 
-    -- Travel rates [1/day].  Zero on the diagonal; moderate inter-city travel.
+    -- Travel rates [1/day].  Only non-zero edges are listed; diagonal and other
+    -- missing pairs default to 0 (sparse matrix syntax).
     rate travel by City, City = {
-        Paris,     Paris:     0,
         Paris,     Lyon:      0.005,
         Paris,     Marseille: 0.002,
         Lyon,      Paris:     0.005,
-        Lyon,      Lyon:      0,
         Lyon,      Marseille: 0.003,
         Marseille, Paris:     0.002,
-        Marseille, Lyon:      0.003,
-        Marseille, Marseille: 0
+        Marseille, Lyon:      0.003
     } [1/day]
 
     -- S, I and R all travel (infection status is unaffected by travel).

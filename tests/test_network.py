@@ -301,3 +301,105 @@ def test_migrate_gillespie_total_integer_conservation() -> None:
     # Also check that compartment values are non-negative
     for name, arr in result.y.items():
         assert np.all(arr >= 0), f"Negative count in {name}"
+
+
+# ---------------------------------------------------------------------------
+# D28 — Sparse matrices (entries omitted default to 0)
+# ---------------------------------------------------------------------------
+
+# Same topology as _META2 but diagonal zeros omitted.
+_META2_SPARSE = (
+    _SIR
+    + _PATCH2
+    + """
+compose MetaSIR {
+    models: [SIR, Patch]
+    rate travel by Patch, Patch = {
+        A, B: 0.1,
+        B, A: 0.1
+    } [1/day]
+    migrate S, I, R : travel
+}
+"""
+)
+
+# Same topology as _META3 but diagonal zeros omitted.
+_META3_SPARSE = (
+    _SIR
+    + _PATCH3
+    + """
+compose MetaSIR {
+    models: [SIR, Patch]
+    rate travel by Patch, Patch = {
+        A, B: 0.05, A, C: 0.02,
+        B, A: 0.05, B, C: 0.03,
+        C, A: 0.02, C, B: 0.03
+    } [1/day]
+    migrate S, I, R : travel
+}
+"""
+)
+
+# Directed chain A→B→C: nodes B and C receive but don't send back.
+_META3_CHAIN = (
+    _SIR
+    + _PATCH3
+    + """
+compose MetaSIR {
+    models: [SIR, Patch]
+    rate travel by Patch, Patch = {
+        A, B: 0.05,
+        B, C: 0.03
+    } [1/day]
+    migrate S, I, R : travel
+}
+"""
+)
+
+
+def test_sparse_diagonal_omitted_parses() -> None:
+    """Diagonal zeros can be omitted in a by M, M matrix."""
+    models = parse(_META2_SPARSE)
+    (m,) = [m for m in models if m.name == "MetaSIR"]
+    assert any(c.name.startswith("S_") for c in m.compartments)
+
+
+def test_sparse_omitted_equivalent_to_explicit_zero() -> None:
+    """Omitting a pair produces the same flows as writing it with value 0."""
+    (m_sparse,) = [m for m in parse(_META2_SPARSE) if m.name == "MetaSIR"]
+    (m_dense,) = [m for m in parse(_META2) if m.name == "MetaSIR"]
+    sparse_edges = {(f.source, f.target) for f in m_sparse.flows}
+    dense_edges = {(f.source, f.target) for f in m_dense.flows}
+    assert sparse_edges == dense_edges
+
+
+def test_sparse_three_patches_flow_count() -> None:
+    """3-patch sparse matrix → same number of flows as the dense equivalent."""
+    (m_sparse,) = [m for m in parse(_META3_SPARSE) if m.name == "MetaSIR"]
+    (m_dense,) = [m for m in parse(_META3) if m.name == "MetaSIR"]
+    assert len(m_sparse.flows) == len(m_dense.flows)
+
+
+def test_sparse_invalid_patch_name_still_fails() -> None:
+    """An explicit entry with a non-existent compartment name is still rejected."""
+    bad = (
+        _SIR
+        + _PATCH2
+        + """
+compose MetaSIR {
+    models: [SIR, Patch]
+    rate travel by Patch, Patch = { A, Z: 0.1 } [1/day]
+    migrate S, I, R : travel
+}
+"""
+    )
+    with pytest.raises((CompositionError, Exception)):
+        parse(bad)
+
+
+def test_sparse_chain_simulation_runs() -> None:
+    """Asymmetric directed chain (A→B→C, no return) simulates without error."""
+    (m,) = [m for m in parse(_META3_CHAIN) if m.name == "MetaSIR"]
+    cfg = SimulationConfig(t_end=10.0, n_points=11)
+    result = ODEBackend().run(m, cfg)
+    assert "S_A" in result.y and "S_C" in result.y

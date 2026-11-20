@@ -4,6 +4,15 @@ All notable changes to EpiDSL are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Sparse migration matrices (D28).** Entries omitted from a `by M, M`
+  matrix used in a `migrate` statement now default to 0 (no edge), so only
+  non-zero travel rates need to be listed.  The dense syntax remains valid.
+  Contact-rate and other non-migration matrices still require all entries.
+
 ## [0.1.0] - 2026-11-20
 
 ### Added

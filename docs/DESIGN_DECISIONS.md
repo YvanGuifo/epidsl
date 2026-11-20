@@ -922,5 +922,41 @@ protocol can use it without a TCP port or external process manager.
 
 ---
 
+## D28 — Sparse migration matrices (2026-11-20)
+
+### Context
+
+A `rate by M, M` matrix used in a `migrate` statement must have all N² entries
+explicitly listed, including the N diagonal zeros and all zero off-diagonal
+entries. For a 10-patch network this is 100 entries; for a 50-patch ring
+topology (100 non-zero edges) it is 2 500 entries, 2 400 of which are zero.
+This makes sparse graphs impractical to write and hard to read.
+
+### Decision: omitted pairs default to 0 for migrate matrices
+
+When a matrix constant is the target of a `migrate` statement, entries that
+are not listed in the `by M, M = { ... }` block default to 0.  Any pair that
+is explicitly listed still requires a valid compartment name; a typo in an
+explicit entry continues to raise a composition error.
+
+The sparse default applies **only** to migration matrices (those named in a
+`migrate` statement). Other matrix constants — contact-rate matrices such as
+`parameter beta by Age, Age` — still require all entries, since a silent 0
+would introduce biologically incorrect transmission with no warning.
+
+**Implementation.** `_stratify` in `compose.py` receives the set of rate names
+referenced by `migrate` statements. For matrices in that set, `given.setdefault(key,
+0.0)` fills in missing pairs before constants are generated. For all other
+matrices, the existing "has no value for …" error is preserved.
+
+### Consequences
+
+- Dense syntax (explicit zeros) remains valid; no existing model is broken.
+- `examples/metapop_sir.epidsl` updated to omit the six diagonal zeros.
+- Contact-rate matrices and other non-migration matrices still require complete
+  declarations.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

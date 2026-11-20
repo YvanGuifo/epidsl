@@ -111,7 +111,8 @@ def flatten(composition: Composition, env: Mapping[str, EpiModel]) -> EpiModel:
                         ref,
                     )
 
-    constants, strata = _stratify(composition, parts, index, _constants(composition, parts))
+    migrate_rates = {m.rate for m in composition.migrates}
+    constants, strata = _stratify(composition, parts, index, _constants(composition, parts), migrate_rates)
     for constant in composition.constants:
         if constant.name in constants or constant.name in strata:
             _fail(
@@ -304,6 +305,7 @@ def _stratify(
     parts: list[EpiModel],
     index: Mapping[str, int],
     constants: dict[str, Constant],
+    migrate_rates: set[str] = frozenset(),
 ) -> tuple[dict[str, Constant], Strata]:
     """Replace each stratified constant by one constant per state, or per ordered pair."""
     strata: Strata = {}
@@ -344,9 +346,14 @@ def _stratify(
             if key in given:
                 _fail(f"'{', '.join(key)}' is given more than once", refs[0])
             given[key] = value
-        missing = [f"'{', '.join(key)}'" for key in keys if key not in given]
-        if missing:
-            _fail(f"constant '{name}' has no value for {', '.join(missing)}", declared)
+        if matrix and name in migrate_rates:
+            # Sparse migration matrix: omitted pairs default to 0 (no edge).
+            for key in keys:
+                given.setdefault(key, 0.0)
+        else:
+            missing = [f"'{', '.join(key)}'" for key in keys if key not in given]
+            if missing:
+                _fail(f"constant '{name}' has no value for {', '.join(missing)}", declared)
 
         unit = declared.unit if declared.unit is not None else (
             constants[name].unit if name in constants else None
