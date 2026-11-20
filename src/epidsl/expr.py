@@ -60,6 +60,11 @@ def _clamp(x: float, lo: float, hi: float) -> float:
     return x
 
 
+def _ifelse(cond: float, a: float, b: float) -> float:
+    """Conditional: returns a if cond > 0, b otherwise."""
+    return a if cond > 0.0 else b
+
+
 FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "exp": (1, math.exp),
     "log": (1, math.log),
@@ -75,6 +80,7 @@ FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "hill": (3, _hill),
     "smoothstep": (3, _smoothstep),
     "clamp": (3, _clamp),
+    "ifelse": (3, _ifelse),
 }
 
 #: Built-in symbols: total population and current time.

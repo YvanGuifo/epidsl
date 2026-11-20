@@ -1062,6 +1062,52 @@ self-migration).  The `_stratify()` function gates the diagonal-skip on
 
 ---
 
+## D37 — Conditional expression `ifelse(cond, a, b)`
+
+**Context.** Some interventions are truly binary: a lockdown is either in force
+or it is not; a threshold policy either fires or it does not.  Smooth
+approximations (`smoothstep`, `hill`) are appropriate when the transition is
+gradual, but they introduce a small continuous error when the real policy is
+sharp.  A ternary conditional directly in the rate expression is the clearest
+way to encode such logic without splitting the model into separate sub-models
+or abusing `step()`.
+
+**Decision.** Add `ifelse(cond, a, b)` → `a` if `cond > 0`, `b` otherwise.
+The convention mirrors R's `ifelse()` and Python's conditional expression `a if
+cond > 0 else b`.  Zero is mapped to the false branch (consistent with
+mathematical convention: "positive" means strictly above zero).
+
+**ODE behaviour.** `ifelse` is a step function in `cond`.  When `cond` is a
+function of time only (e.g. `ifelse(t - t0, ...)`) the transition is a
+time-dependent discontinuity, identical to what `step()` creates.  However
+`ifelse` does **not** inject ODE breakpoints automatically, because `cond` may
+be a general expression whose zero-crossing is not statically determinable.
+Consequence: for time-based switches, the ODE solver crosses the discontinuity
+with adaptive step control (LSODA).  For clean integration, the user should
+nest an explicit `step()` call when the threshold is a constant time:
+`ifelse(step(t, t0) - 0.5, beta_lo, beta_hi)` — `step()` injects the
+breakpoint, `ifelse` selects the value.  For state-dependent conditions (e.g.
+`ifelse(I - 500, ...)`) the discontinuity is not on the time axis and cannot
+be injected; LSODA may slow down near the threshold.  In such cases
+`hill(I, k, n)` or `clamp` are preferable if a smooth transition is
+acceptable.
+
+**Alternatives considered.**
+- *Inject a breakpoint for constant-literal thresholds:* would require the
+  compiler to pattern-match `ifelse(t - literal, ...)` and extract the literal.
+  Decided against: adds complexity for a rare case the user can handle with
+  `step()`.
+- *Warn when cond is state-dependent:* useful but requires a type system to
+  distinguish time-only vs. state-involving expressions.  Left for a later
+  tranche.
+- *Named `ternary` or `cond`:* `ifelse` is the most recognisable name in the
+  scientific computing community (R, Modelica).
+
+**Example.** `examples/sir_ifelse.epidsl` shows a lockdown triggered at day 30:
+`ifelse(t - t_lock, beta_lo, beta_hi) * S * I`.
+
+---
+
 ## D36 — Hill saturation function `hill(x, k, n)`
 
 **Context.** Many epidemiological processes saturate: hospital capacity limits

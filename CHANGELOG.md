@@ -8,6 +8,16 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Conditional expression `ifelse(cond, a, b)` (D37).** Returns `a` if
+  `cond > 0`, `b` otherwise.  Enables explicit mode-switching in rate
+  expressions without introducing time-step artefacts, e.g.
+  `ifelse(t - t_lock, beta_lo, beta_hi)` for a hard lockdown at day 30.
+  For state-dependent conditions (e.g. `ifelse(I - 500, beta_lo, beta_hi)`),
+  the ODE solver does not inject breakpoints — the transition is handled by
+  LSODA's adaptive step size, which may be slow near the threshold;
+  for such cases `hill()` or `clamp()` are preferable if a smooth switch is
+  acceptable.  Example: `examples/sir_ifelse.epidsl`.
+
 - **Hill saturation function `hill(x, k, n)` (D36).** Returns `xⁿ / (kⁿ + xⁿ)`:
   0 at `x=0`, 0.5 at `x=k` (the half-saturation constant), and approaching 1 as
   `x → ∞`.  For `n=1`: standard Michaelis-Menten kinetics.  Useful for modelling
