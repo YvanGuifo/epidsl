@@ -1,0 +1,16 @@
+-- SIR with vaccination campaign using clamp(vacc_rate * t, 0, 1)
+-- Coverage grows linearly at 5 %/day, clamped to [0, 1] so it cannot
+-- exceed 100 % or go negative even if the expression were extrapolated.
+--
+-- R0_before  = 0.0003 * 1000 / 0.1 = 3.0  (epidemic grows before coverage)
+-- R0_at_t=20 = 0.0  (full coverage reached, transmission stops)
+
+model SIR {
+    semantics: [ODE, Gillespie, TauLeap]
+    compartment S = 990, I = 10, R = 0
+    rate beta      = 0.0003  [1/day]
+    rate vacc_rate = 0.05    [1/day]
+    rate gamma     = 0.1     [1/day]
+    flow S -> I : beta * (1 - clamp(vacc_rate * t, 0, 1)) * S * I
+    flow I -> R : gamma * I
+}

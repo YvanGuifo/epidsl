@@ -1062,6 +1062,44 @@ self-migration).  The `_stratify()` function gates the diagonal-skip on
 
 ---
 
+## D34 — Value-bounding function `clamp(x, lo, hi)`
+
+**Context.** Rate expressions can produce values outside their physical range when
+composed with time-dependent drivers. For example, `vacc_rate * t` grows without
+bound; using it directly as a coverage fraction can exceed 1 or drop below 0,
+causing negative effective transmission rates or spurious oscillations. `min` and
+`max` can be nested to achieve the same effect, but `clamp(vacc_rate * t, 0, 1)`
+is clearer in intent and matches the vocabulary used in shader programming and
+numerical libraries.
+
+**Decision.** Add `clamp(x, lo, hi)` as a built-in function:
+- `x < lo` → `lo`
+- `x > hi` → `hi`
+- `lo <= x <= hi` → `x`
+
+Registered in `FUNCTIONS` with arity 3. Equivalent to `max(lo, min(hi, x))`,
+but explicit and readable.
+
+**ODE breakpoints.** `clamp` is continuous everywhere (piecewise linear with two
+kinks at `x = lo` and `x = hi`). Unlike `step` or `pulse`, its argument is a
+general expression whose kinks in time are not statically determined from the AST.
+`_discontinuity_breakpoints()` is **not** extended: LSODA degrades gracefully at
+kinks, and injecting breakpoints would require solving `x(t) = lo` and `x(t) = hi`
+analytically, which is out of scope for a static pass.
+
+**Stochastic backends.** As with all utility functions, Gillespie and tau-leap
+evaluate the rate at each event time. No extra logic needed.
+
+**Alternatives considered.**
+- *`min(1, max(0, expr))`*: works but requires the user to know the nesting order
+  and is inconsistent across lo ≠ 0, hi ≠ 1 cases.
+- *Injecting kink breakpoints from `clamp`*: would require symbolically solving
+  `expr(t) = lo` and `expr(t) = hi`, feasible only for linear `expr`.
+- *A saturating logistic `1/(1+exp(-k*x))`*: smooth but introduces an extra
+  parameter and never reaches exactly 0 or 1.
+
+---
+
 ## D33 — Rectangular pulse function `pulse(t, t0, t1)`
 
 **Context.** Some interventions have a clear start and end: a school closure, a

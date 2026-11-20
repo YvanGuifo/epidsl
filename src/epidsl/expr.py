@@ -33,6 +33,15 @@ def _pulse(t: float, t0: float, t1: float) -> float:
     return 1.0 if t0 <= t < t1 else 0.0
 
 
+def _clamp(x: float, lo: float, hi: float) -> float:
+    """Clamp x to [lo, hi]: lo if x < lo, hi if x > hi, x otherwise."""
+    if x < lo:
+        return lo
+    if x > hi:
+        return hi
+    return x
+
+
 FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "exp": (1, math.exp),
     "log": (1, math.log),
@@ -45,6 +54,7 @@ FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "step": (2, _step),
     "ramp": (3, _ramp),
     "pulse": (3, _pulse),
+    "clamp": (3, _clamp),
 }
 
 #: Built-in symbols: total population and current time.

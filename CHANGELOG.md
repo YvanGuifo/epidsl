@@ -8,6 +8,13 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Value-bounding function `clamp(x, lo, hi)` (D34).** Returns `lo` if
+  `x < lo`, `hi` if `x > hi`, and `x` otherwise.  Useful for vaccination
+  models where `clamp(vacc_rate * t, 0, 1)` guarantees coverage stays in
+  `[0, 1]` even when the driving expression extrapolates outside the physical
+  range.  No ODE breakpoints are injected (the function is continuous).
+  Example: `examples/sir_clamp.epidsl`.
+
 - **Rectangular pulse function for temporary interventions (D33).** `pulse(t, t0, t1)`
   returns 1 for `t0 <= t < t1` (closed left, open right) and 0 otherwise, enabling
   finite-duration interventions such as temporary lockdowns, school closures, or
