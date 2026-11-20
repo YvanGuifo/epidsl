@@ -19,6 +19,15 @@ def _step(t: float, t0: float) -> float:
     return 1.0 if t >= t0 else 0.0
 
 
+def _ramp(t: float, t0: float, t1: float) -> float:
+    """Linear ramp: 0 for t <= t0, 1 for t >= t1, linear in between."""
+    if t <= t0:
+        return 0.0
+    if t >= t1:
+        return 1.0
+    return (t - t0) / (t1 - t0)
+
+
 FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "exp": (1, math.exp),
     "log": (1, math.log),
@@ -29,6 +38,7 @@ FUNCTIONS: Mapping[str, tuple[int, Callable[..., float]]] = {
     "min": (2, min),
     "max": (2, max),
     "step": (2, _step),
+    "ramp": (3, _ramp),
 }
 
 #: Built-in symbols: total population and current time.

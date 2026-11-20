@@ -11,25 +11,39 @@ from epidsl.expr import walk
 from epidsl.ir import Call, EpiModel, Num, Semantics, SimulationConfig, Sym
 
 
-def _step_thresholds(model: EpiModel, constants: dict[str, float]) -> list[float]:
-    """Return every numeric threshold t0 found in step(t, t0) calls in flow rates.
+def _resolve_num(expr: object, constants: dict[str, float]) -> float | None:
+    """Return the numeric value of a Num or a Sym constant, or None."""
+    if isinstance(expr, Num):
+        return float(expr.value)
+    if isinstance(expr, Sym) and expr.name in constants:
+        return float(constants[expr.name])
+    return None
 
-    Only the common pattern ``step(t, <literal-or-constant>)`` is recognised.
-    Thresholds embedded in more complex expressions (e.g. ``step(t, a+1)``)
-    are silently skipped: the ODE will still run, just without the extra
-    breakpoint hint.
+
+def _discontinuity_breakpoints(model: EpiModel, constants: dict[str, float]) -> list[float]:
+    """Return every numeric breakpoint from step/ramp calls in flow rate expressions.
+
+    Recognised patterns (literal or named constant as threshold):
+      ``step(t, t0)``       → one breakpoint: t0
+      ``ramp(t, t0, t1)``   → two breakpoints: t0 and t1
+
+    Thresholds embedded in more complex expressions are silently skipped.
     """
-    thresholds: list[float] = []
+    breakpoints: list[float] = []
     for flow in model.flows:
         for node in walk(flow.expr):
-            if not (isinstance(node, Call) and node.func == "step" and len(node.args) == 2):
+            if not isinstance(node, Call):
                 continue
-            t0_expr = node.args[1]
-            if isinstance(t0_expr, Num):
-                thresholds.append(float(t0_expr.value))
-            elif isinstance(t0_expr, Sym) and t0_expr.name in constants:
-                thresholds.append(float(constants[t0_expr.name]))
-    return thresholds
+            if node.func == "step" and len(node.args) == 2:
+                val = _resolve_num(node.args[1], constants)
+                if val is not None:
+                    breakpoints.append(val)
+            elif node.func == "ramp" and len(node.args) == 3:
+                for arg in node.args[1:]:
+                    val = _resolve_num(arg, constants)
+                    if val is not None:
+                        breakpoints.append(val)
+    return breakpoints
 
 
 class ODEBackend:
@@ -71,9 +85,9 @@ class ODEBackend:
         user_grid = config.grid()
         constants = {k.name: k.value for k in model.constants}
         thresholds = [
-            t0
-            for t0 in _step_thresholds(model, constants)
-            if float(user_grid[0]) < t0 < float(user_grid[-1])
+            bp
+            for bp in _discontinuity_breakpoints(model, constants)
+            if float(user_grid[0]) < bp < float(user_grid[-1])
         ]
 
         # Inject threshold breakpoints into t_eval so LSODA crosses the step

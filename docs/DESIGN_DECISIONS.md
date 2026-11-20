@@ -1062,6 +1062,48 @@ self-migration).  The `_stratify()` function gates the diagonal-skip on
 
 ---
 
+## D32 — Linear ramp function `ramp(t, t0, t1)`
+
+**Context.** Some interventions are not instantaneous. Lockdown stringency may
+increase over several days; vaccination coverage grows progressively. `step()`
+(D31) cannot model these — it jumps discontinuously. Users need a smooth, linear
+transition between two regimes.
+
+**Decision.** Add `ramp(t, t0, t1)` as a built-in function:
+- `t <= t0` → 0
+- `t >= t1` → 1
+- `t0 < t < t1` → `(t - t0) / (t1 - t0)`
+
+Registered in `FUNCTIONS` with arity 3. The boundary convention is `0` at t0
+(the ramp is not yet active) and `1` at t1 (fully engaged), consistently with
+`step()` being closed on the right.
+
+**ODE breakpoint injection.** The ramp function has kinks (derivative
+discontinuities) at both `t0` and `t1`, not a jump. LSODA degrades gracefully at
+kinks, but injecting both as breakpoints in `t_eval` avoids unnecessarily small
+steps at the transition boundaries. `_discontinuity_breakpoints()` (which
+generalises `_step_thresholds()` from D31) iterates over `args[1:]` for a ramp
+node, adding both t0 and t1 when they are literals or named constants. The output
+trimming step (unchanged from D31) strips both extra points, keeping the output
+shape at exactly `n_points`.
+
+**Reuse.** `_resolve_num()` was extracted as a helper shared by step and ramp
+handling. `_discontinuity_breakpoints()` replaces the old `_step_thresholds()`
+so future time-varying functions need only add one branch there.
+
+**Stochastic backends.** As with `step()`, Gillespie and tau-leap evaluate the
+rate at each event time and cross the threshold naturally. No extra logic needed.
+
+**Alternatives considered.**
+- *Sigmoidal softening `1/(1+exp(-k*(t-t_mid)))`*: smooth everywhere but
+  introduces two extra parameters and never reaches exactly 0 or 1.
+- *User composing `step(t,t0) - step(t,t1)`*: gives a pulse, not a ramp.
+  Requires the user to understand the algebra, error-prone.
+- *Piecewise-linear event scheduling*: would require a richer IR and cannot
+  be expressed in the current expression grammar.
+
+---
+
 ## D31 — Heaviside step function `step(t, t0)`
 
 **Context.** Many epidemiological interventions are discrete events: a lockdown
