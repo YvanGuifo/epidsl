@@ -1,0 +1,24 @@
+-- Dynamique d'opinion de type voter model — D40
+--
+-- 100 agents portent l'une des deux opinions A ou B.
+-- À chaque contact entre un agent A et un voisin B :
+--   - l'agent A adopte l'opinion B (A → B)
+--   - le voisin B ne change pas (B → B, no-op)
+-- Idem symétrique : B peut copier un voisin A.
+-- Avec un taux μ élevé et un réseau petit-monde, le système converge
+-- vers un consensus (une opinion domine) par dérive stochastique.
+--
+-- Exécution : uv run epidsl run examples/opinion_dynamics.epidsl --t-end 50
+
+model Opinion {
+    semantics: [Network]
+
+    compartment A = 50, B = 50
+
+    rate mu = 1.0   [1/contact/day]
+
+    network watts_strogatz(k=4, rewire=0.1)
+
+    interact A + B -> B + B : mu
+    interact B + A -> A + A : mu
+}

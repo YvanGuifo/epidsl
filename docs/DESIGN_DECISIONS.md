@@ -1498,5 +1498,62 @@ consultation O(nb_attributs) supplémentaires par événement.  Pour le modèle
 
 ---
 
+### D40 — Règles de transition agent-agent (`interact`) (2026-11-20)
+
+**Problème.** Les flux conventionnels (`flow S -> I : beta * contacts(I)`)
+permettent à l'agent focal de changer d'état en fonction de ses voisins, mais
+ne modifient pas l'état des voisins.  Des scénarios comme la dynamique d'opinion
+(voter model), la co-infection ou la récupération couplée à la transmission
+nécessitent que *deux* agents changent d'état simultanément lors d'un contact.
+
+**Décision.** Introduire la clause `interact A + B -> A' + B' : expr` dans la
+grammaire.  Un événement de paire est déclenché par l'agent focal en état A :
+- le taux total pour l'agent focal u = `eval(expr) × count(B-voisins de u)` ;
+- à l'exécution : u passe à A', un B-voisin de u choisi uniformément passe à B'.
+
+`expr` est un taux *par paire* (ex. `mu`, `beta * attr(risk, High)`), et la
+multiplication par le nombre de B-voisins est implicite dans le backend.
+
+**Alternatives écartées.**
+
+1. *`flow S -> I : beta * contacts(I)`* — déjà disponible pour les transitions
+   à un seul agent.  Ne peut pas modifier l'état du voisin.
+2. *`contacts()` explicite dans `interact`* — autoriser le taux `mu * contacts(B)`
+   serait équivalent à `flow` pour le focal ; la multiplication par n_B serait
+   alors en double.  Choix retenu : le taux dans `interact` est toujours
+   per-paire, la multiplication reste implicite.
+3. *Syntaxe `infect(neighbor)`* — plus expressive mais nécessite une extension
+   du langage d'expression plutôt que d'un nouveau type de déclaration.
+
+**Implémentation.**
+
+- `InteractFlow` dataclass dans `ir.py` (5 champs : 4 noms d'état + expr).
+- Champ `EpiModel.interact_flows: tuple[InteractFlow, ...]` (défaut `()`).
+- Transformateur `interact_flow` dans `parser.py`.
+- Vérifications statiques C-I1 (endpoint inconnu) et C-I2 (hors Network).
+- `NetworkBackend` gère les interact flows séparément des flux réguliers :
+  pour chaque agent focal éligible, `b_nbrs` est calculé une fois, le taux
+  focal = `per_pair_rate × len(b_nbrs)`, et à l'exécution un voisin est tiré
+  par `rng.integers(len(b_nbrs))`.
+- Représentation des événements : liste unifiée `all_events` avec clé
+  `int` (flux régulier) ou `('I', idx, b_nbrs)` (interact), discriminée par
+  `isinstance`.
+
+### Vérifications statiques
+
+| Code  | Déclencheur |
+|-------|-------------|
+| C-I1  | État dans `interact` non déclaré comme compartiment |
+| C-I2  | `interact` dans un modèle sans sémantique Network |
+
+### Performance mesurée
+
+Pour le modèle `opinion_dynamics.epidsl` (N=100, watts_strogatz k=4, t_end=50) :
+~0.1 s (simulation très rapide car taux élevés et convergence rapide).
+Le coût additionnel par rapport à D38/D39 est O(N × degree) par pas de temps,
+comme les flux conventionnels avec `contacts()`.
+
+---
+
 *Maintained alongside the source. Update it when a decision is made or an open
 question is resolved.*

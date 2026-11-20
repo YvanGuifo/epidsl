@@ -216,6 +216,27 @@ class Observable:
 
 
 @dataclass(frozen=True, slots=True)
+class InteractFlow:
+    """Pair interaction between focal agent and a randomly-chosen neighbour.
+
+    When a focal agent in state ``focal_source`` fires this event:
+      - it transitions to ``focal_target``
+      - one randomly selected neighbour in state ``neighbor_source`` transitions to ``neighbor_target``
+
+    Rate per focal agent u = eval(expr) × count(neighbor_source-neighbours of u).
+    The ``expr`` is the per-pair rate; the backend multiplies by the B-neighbour count.
+    """
+
+    focal_source: str
+    neighbor_source: str
+    focal_target: str
+    neighbor_target: str
+    expr: Expr
+    line: int = field(default=0, compare=False)
+    column: int = field(default=0, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
 class EpiModel:
     name: str
     compartments: tuple[Compartment, ...]
@@ -227,6 +248,7 @@ class EpiModel:
     #: compartments are then the product of these, in the same order.
     parts: tuple[tuple[str, tuple[str, ...]], ...] = ()
     attributes: tuple[AttributeDecl, ...] = ()
+    interact_flows: tuple[InteractFlow, ...] = ()
     network: NetworkDecl | None = None
     line: int = _pos()
     column: int = _pos()

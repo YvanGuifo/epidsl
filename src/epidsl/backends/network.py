@@ -27,7 +27,7 @@ from numpy.typing import NDArray
 from epidsl.backends import BackendResult
 from epidsl.checks import errors
 from epidsl.expr import FUNCTIONS, walk
-from epidsl.ir import BinOp, Call, EpiModel, Expr, Neg, Num, Semantics, SimulationConfig, Sym, AttributeDecl
+from epidsl.ir import BinOp, Call, EpiModel, Expr, InteractFlow, Neg, Num, Semantics, SimulationConfig, Sym, AttributeDecl
 
 _KNOWN_GENERATORS = frozenset({"erdos_renyi", "watts_strogatz", "barabasi_albert", "complete"})
 
@@ -224,7 +224,7 @@ class NetworkBackend:
             for decl in model.attributes
         }
 
-        # Flow metadata
+        # Regular flow metadata
         flow_sources = [
             None if f.source is None else compartment_index[f.source]
             for f in model.flows
@@ -234,6 +234,13 @@ class NetworkBackend:
             for f in model.flows
         ]
         flow_exprs = [f.expr for f in model.flows]
+
+        # Interact flow metadata
+        iflow_focal_src  = [compartment_index[f.focal_source]    for f in model.interact_flows]
+        iflow_nbr_src    = [compartment_index[f.neighbor_source]  for f in model.interact_flows]
+        iflow_focal_tgt  = [compartment_index[f.focal_target]    for f in model.interact_flows]
+        iflow_nbr_tgt    = [compartment_index[f.neighbor_target]  for f in model.interact_flows]
+        iflow_exprs      = [f.expr                               for f in model.interact_flows]
 
         # Output grid
         output_times = np.linspace(0.0, config.t_end, config.n_points)
@@ -261,46 +268,59 @@ class NetworkBackend:
         while t < config.t_end and step < max_steps:
             sv = _state_vec()
 
-            # Compute all rates: (agent, flow_index) -> rate
-            # For efficiency, only compute rates for agents in the right state
+            # Events: (agent, event_key, rate)
+            # event_key = int (flow index) for regular flows
+            # event_key = ('I', interact_idx, b_nbrs) for interact flows
             total_rate = 0.0
-            agent_flow_rates: list[tuple[int, int, float]] = []
+            all_events: list[tuple[int, int | tuple, float]] = []
 
+            # --- Regular flows ---
             for f_idx, (f_src, f_tgt, f_expr) in enumerate(
                 zip(flow_sources, flow_targets, flow_exprs)
             ):
-                if f_src is not None:
-                    # Only agents in state f_src can fire this flow
-                    eligible = np.where(agent_states == f_src)[0]
-                else:
-                    eligible = np.arange(N)
-
+                eligible = np.where(agent_states == f_src)[0] if f_src is not None else np.arange(N)
                 for u in eligible:
                     agent_attrs = {
                         name: attr_label_maps[name][int(attr_index_arrays[name][u])]
                         for name in attr_label_maps
                     } if attr_label_maps else None
                     rate = _agent_rate(
-                        u,
-                        int(agent_states[u]),
-                        f_src,
-                        f_tgt,
-                        f_expr,
-                        constants,
-                        compartment_index,
-                        compartment_names,
-                        agent_states,
-                        neighbours,
-                        sv,
-                        t,
-                        agent_attrs,
+                        u, int(agent_states[u]), f_src, f_tgt, f_expr,
+                        constants, compartment_index, compartment_names,
+                        agent_states, neighbours, sv, t, agent_attrs,
                     )
                     if rate > 0.0:
-                        agent_flow_rates.append((u, f_idx, rate))
+                        all_events.append((u, f_idx, rate))
                         total_rate += rate
 
+            # --- Interact flows ---
+            for i_idx, (fs, ns, _, _, i_expr) in enumerate(
+                zip(iflow_focal_src, iflow_nbr_src, iflow_focal_tgt, iflow_nbr_tgt, iflow_exprs)
+            ):
+                eligible = np.where(agent_states == fs)[0]
+                for u in eligible:
+                    b_nbrs = [v for v in neighbours[u] if agent_states[v] == ns]
+                    n_b = len(b_nbrs)
+                    if n_b == 0:
+                        continue
+                    agent_attrs = {
+                        name: attr_label_maps[name][int(attr_index_arrays[name][u])]
+                        for name in attr_label_maps
+                    } if attr_label_maps else None
+                    contact_counts = {
+                        name: int(np.sum(agent_states[neighbours[u]] == ci))
+                        for ci, name in enumerate(compartment_names)
+                    }
+                    per_pair_rate = max(
+                        0.0,
+                        _eval_expr(i_expr, constants, compartment_index, sv, t, contact_counts, agent_attrs),
+                    )
+                    focal_rate = per_pair_rate * n_b
+                    if focal_rate > 0.0:
+                        all_events.append((u, ('I', i_idx, b_nbrs), focal_rate))
+                        total_rate += focal_rate
+
             if total_rate <= 0.0:
-                # No events possible: epidemic ended
                 break
 
             # Draw next event time
@@ -312,18 +332,25 @@ class NetworkBackend:
                 _record(output_times[output_idx])
                 output_idx += 1
 
-            # Select event
-            rates_arr = np.array([r for _, _, r in agent_flow_rates])
-            chosen = int(rng.choice(len(agent_flow_rates), p=rates_arr / rates_arr.sum()))
-            u, f_idx, _ = agent_flow_rates[chosen]
+            # Select and apply event
+            rates_arr = np.array([r for _, _, r in all_events])
+            chosen = int(rng.choice(len(all_events), p=rates_arr / rates_arr.sum()))
+            u, event_key, _ = all_events[chosen]
 
-            # Apply event
-            f_tgt = flow_targets[f_idx]
-            f_src = flow_sources[f_idx]
-            if f_src is not None:
-                agent_states[u] = f_tgt if f_tgt is not None else f_src
-            elif f_tgt is not None:
-                agent_states[u] = f_tgt
+            if isinstance(event_key, int):
+                # Regular flow
+                f_tgt = flow_targets[event_key]
+                f_src = flow_sources[event_key]
+                if f_src is not None:
+                    agent_states[u] = f_tgt if f_tgt is not None else f_src
+                elif f_tgt is not None:
+                    agent_states[u] = f_tgt
+            else:
+                # Interact flow: update focal agent and one random B-neighbour
+                _, i_idx, b_nbrs = event_key
+                agent_states[u] = iflow_focal_tgt[i_idx]
+                v = b_nbrs[int(rng.integers(len(b_nbrs)))]
+                agent_states[v] = iflow_nbr_tgt[i_idx]
 
             t = t_next
             step += 1

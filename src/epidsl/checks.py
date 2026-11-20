@@ -19,6 +19,8 @@ C-N2 contacts() with wrong arity               error
 C-A1 attribute used without Network semantics   error
 C-A2 attr() with wrong arity                   error
 C-A3 attr() references undeclared attribute     error
+C-I1 interact endpoint is not a compartment    error
+C-I2 interact used without Network semantics   error
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from epidsl.expr import BUILTIN_SYMBOLS, FUNCTIONS, RESERVED, walk
-from epidsl.ir import Call, Compartment, Constant, EpiModel, Expr, Incidence, Observable, Semantics, Sym, AttributeDecl
+from epidsl.ir import Call, Compartment, Constant, EpiModel, Expr, Incidence, InteractFlow, Observable, Semantics, Sym, AttributeDecl
 
 
 class Severity(Enum):
@@ -220,7 +222,22 @@ def check(
         if observable.delay < 0:
             error("C14", f"observable '{observable.name}': delay must be non-negative", observable)
 
-    has_flows = len(model.flows) > 0
+    # C-I2 / C-I1: interact flows require Network semantics; endpoints must be compartments
+    for iflow in model.interact_flows:
+        if Semantics.NETWORK not in model.semantics:
+            error("C-I2", "interact flows can only be used with Network semantics", iflow)
+        for ep_name, ep_label in [
+            (iflow.focal_source, "focal source"),
+            (iflow.neighbor_source, "neighbor source"),
+            (iflow.focal_target, "focal target"),
+            (iflow.neighbor_target, "neighbor target"),
+        ]:
+            used.add(ep_name)
+            if ep_name not in compartments:
+                error("C-I1", f"interact flow {ep_label} '{ep_name}' is not a compartment", iflow)
+        check_expr(iflow.expr, in_observable=False)
+
+    has_flows = len(model.flows) + len(model.interact_flows) > 0
     for compartment in model.compartments:
         if has_flows and compartment.name not in used:
             warning("C7", f"compartment '{compartment.name}' is never used", compartment)

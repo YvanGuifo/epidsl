@@ -8,6 +8,15 @@ All notable changes to EpiDSL are recorded here. The format follows
 
 ### Added
 
+- **Règles de transition agent-agent `interact A + B -> A' + B' : expr` (D40).**
+  Un flux de paire déclenche deux transitions simultanées : l'agent focal passe de A à A'
+  et un voisin choisi aléatoirement parmi ses voisins en état B passe à B'.  Le taux pour
+  l'agent focal est `expr × count(B-voisins)` : `expr` est le taux par paire, la
+  multiplication par le compte de voisins est implicite.  Utile pour la dynamique d'opinion
+  (voter model), la co-infection, la récupération couplée à la transmission.  Réservé à la
+  sémantique Network.  Nouveaux contrôles statiques : C-I1 (état non déclaré), C-I2 (absent
+  de sémantique Network).  Exemple : `examples/opinion_dynamics.epidsl`.
+
 - **Agents hétérogènes via attributs discrets `attribute … ~ categorical(…)` (D39).**
   Chaque agent reçoit un attribut tiré d'une distribution catégorielle à la
   construction du modèle (ex. `attribute risk ~ categorical(Low=0.7, High=0.3)`).

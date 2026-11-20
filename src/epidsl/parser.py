@@ -23,6 +23,7 @@ from epidsl.ir import (
     Expr,
     Flow,
     Incidence,
+    InteractFlow,
     Migrate,
     Neg,
     NetworkDecl,
@@ -136,6 +137,7 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
         flows: list[Flow] = []
         observables: list[Observable] = []
         attributes: list[AttributeDecl] = []
+        interact_flows: list[InteractFlow] = []
         semantics: tuple[Semantics, ...] | None = None
         network: NetworkDecl | None = None
         for item in statements:
@@ -149,6 +151,8 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
                 observables.append(item)
             elif isinstance(item, AttributeDecl):
                 attributes.append(item)
+            elif isinstance(item, InteractFlow):
+                interact_flows.append(item)
             elif isinstance(item, NetworkDecl):
                 if network is not None:
                     raise EpiSyntaxError(f"model {name} declares network twice", **_at(name))
@@ -165,9 +169,18 @@ class _ToIR(Transformer[Token, tuple[EpiModel | Composition, ...]]):
             semantics=semantics or (Semantics.ODE,),
             observables=tuple(observables),
             attributes=tuple(attributes),
+            interact_flows=tuple(interact_flows),
             network=network,
             line=name.line or 0,
             column=name.column or 0,
+        )
+
+    def interact_flow(
+        self, fs: Token, ns: Token, ft: Token, nt: Token, expr: Expr
+    ) -> InteractFlow:
+        return InteractFlow(
+            str(fs), str(ns), str(ft), str(nt), expr,
+            line=fs.line or 0, column=fs.column or 0,
         )
 
     def compartments(self, *items: Compartment) -> list[Compartment]:
